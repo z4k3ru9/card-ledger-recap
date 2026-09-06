@@ -10,7 +10,9 @@ import { BankCard } from '@/components/BankCard'
 import { CashCard } from '@/components/CashCard'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
+import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { generateRecapPdf } from '@/lib/pdf'
+import { createCashRow, createTransactionRow } from '@/lib/rows'
 import type { BankBlock, CashRow } from '@/lib/types'
 
 function currentMonthValue(): string {
@@ -21,7 +23,7 @@ function currentMonthValue(): string {
 function App() {
   const [month, setMonth] = useState(currentMonthValue())
   const [banks, setBanks] = useState<BankBlock[]>([])
-  const [cashRows, setCashRows] = useState<CashRow[]>([])
+  const [cashRows, setCashRows] = useState<CashRow[]>(() => [createCashRow()])
 
   const bankTotal = banks.reduce(
     (sum, bank) =>
@@ -37,7 +39,12 @@ function App() {
   function addBank(bankName: string) {
     setBanks((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), bankName, transactions: [] },
+      {
+        id: crypto.randomUUID(),
+        bankName,
+        colorIndex: prev.length,
+        transactions: [createTransactionRow()],
+      },
     ])
   }
 
@@ -135,7 +142,7 @@ function App() {
                 key={bank.id}
                 className="flex items-center justify-between text-sm"
               >
-                <span className="text-muted-foreground">
+                <span className={paletteFor(bank.colorIndex).heading}>
                   {bank.bankName}
                 </span>
                 <span>
@@ -146,7 +153,7 @@ function App() {
               </div>
             ))}
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Cash (net)</span>
+              <span className={CASH_PALETTE.heading}>Cash (net)</span>
               <span>{formatCurrency(cashNet)}</span>
             </div>
             <Separator className="my-1" />

@@ -1,5 +1,6 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { AmountInput } from '@/components/AmountInput'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -25,21 +26,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatCurrency } from '@/lib/format'
+import { CASH_PALETTE } from '@/lib/palette'
+import { createCashRow, isRowEmpty, withTrailingEmptyRow } from '@/lib/rows'
+import { cn } from '@/lib/utils'
 import type { CashRow } from '@/lib/types'
 
 interface CashCardProps {
   rows: CashRow[]
   onChange: (rows: CashRow[]) => void
-}
-
-function newRow(): CashRow {
-  return {
-    id: crypto.randomUUID(),
-    date: '',
-    type: 'debit',
-    description: '',
-    amount: 0,
-  }
 }
 
 export function CashCard({ rows, onChange }: CashCardProps) {
@@ -52,25 +46,33 @@ export function CashCard({ rows, onChange }: CashCardProps) {
   const net = deposits - debits
 
   function updateRow(id: string, patch: Partial<CashRow>) {
-    onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+    const updated = rows.map((row) =>
+      row.id === id ? { ...row, ...patch } : row,
+    )
+    onChange(withTrailingEmptyRow(updated, createCashRow))
   }
 
   function removeRow(id: string) {
-    onChange(rows.filter((row) => row.id !== id))
-  }
-
-  function addRow() {
-    onChange([...rows, newRow()])
+    const remaining = rows.filter((row) => row.id !== id)
+    onChange(withTrailingEmptyRow(remaining, createCashRow))
   }
 
   return (
-    <Card>
+    <Card className={cn('border-t-4', CASH_PALETTE.accentBorder)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-base">Cash</CardTitle>
-        <span className="text-sm font-medium text-muted-foreground">
-          Net cash:{' '}
-          <span className="text-foreground">{formatCurrency(net)}</span>
-        </span>
+        <CardTitle className={cn('text-base', CASH_PALETTE.heading)}>
+          Cash
+        </CardTitle>
+        <Badge
+          variant="outline"
+          className={cn(
+            'border-transparent font-semibold',
+            CASH_PALETTE.badgeBg,
+            CASH_PALETTE.badgeText,
+          )}
+        >
+          Net cash: {formatCurrency(net)}
+        </Badge>
       </CardHeader>
       <CardContent>
         <Table>
@@ -84,16 +86,6 @@ export function CashCard({ rows, onChange }: CashCardProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center text-sm text-muted-foreground"
-                >
-                  No cash transactions yet.
-                </TableCell>
-              </TableRow>
-            )}
             {rows.map((row) => (
               <TableRow key={row.id}>
                 <TableCell>
@@ -151,6 +143,7 @@ export function CashCard({ rows, onChange }: CashCardProps) {
                     size="icon"
                     className="size-8 text-muted-foreground hover:text-destructive"
                     onClick={() => removeRow(row.id)}
+                    disabled={rows.length === 1 && isRowEmpty(row)}
                     aria-label="Remove row"
                   >
                     <Trash2 className="size-4" />
@@ -172,10 +165,9 @@ export function CashCard({ rows, onChange }: CashCardProps) {
             </TableRow>
           </TableFooter>
         </Table>
-        <Button variant="outline" size="sm" className="mt-3" onClick={addRow}>
-          <Plus className="size-4" />
-          Add Cash Entry
-        </Button>
+        <p className="mt-2 text-xs text-muted-foreground">
+          A new row is added automatically once you fill in the last one.
+        </p>
       </CardContent>
     </Card>
   )

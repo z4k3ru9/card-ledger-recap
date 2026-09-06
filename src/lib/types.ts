@@ -10,6 +10,7 @@ export interface TransactionRow {
 export interface BankBlock {
   id: string
   bankName: string
+  colorIndex: number
   transactions: TransactionRow[]
 }
 

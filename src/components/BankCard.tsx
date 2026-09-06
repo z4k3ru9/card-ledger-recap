@@ -1,6 +1,7 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { AmountInput } from '@/components/AmountInput'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Card,
@@ -17,7 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/format'
+import { paletteFor } from '@/lib/palette'
+import { createTransactionRow, isRowEmpty, withTrailingEmptyRow } from '@/lib/rows'
 import type { BankBlock, TransactionRow } from '@/lib/types'
 
 interface BankCardProps {
@@ -26,44 +30,45 @@ interface BankCardProps {
   onRemove: () => void
 }
 
-function newRow(): TransactionRow {
-  return { id: crypto.randomUUID(), date: '', description: '', amount: 0 }
-}
-
 export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
   const subtotal = bank.transactions.reduce((sum, r) => sum + r.amount, 0)
+  const palette = paletteFor(bank.colorIndex)
 
   function updateRow(id: string, patch: Partial<TransactionRow>) {
+    const updated = bank.transactions.map((row) =>
+      row.id === id ? { ...row, ...patch } : row,
+    )
     onChange({
       ...bank,
-      transactions: bank.transactions.map((row) =>
-        row.id === id ? { ...row, ...patch } : row,
-      ),
+      transactions: withTrailingEmptyRow(updated, createTransactionRow),
     })
   }
 
   function removeRow(id: string) {
+    const remaining = bank.transactions.filter((row) => row.id !== id)
     onChange({
       ...bank,
-      transactions: bank.transactions.filter((row) => row.id !== id),
+      transactions: withTrailingEmptyRow(remaining, createTransactionRow),
     })
   }
 
-  function addRow() {
-    onChange({ ...bank, transactions: [...bank.transactions, newRow()] })
-  }
-
   return (
-    <Card>
+    <Card className={cn('border-t-4', palette.accentBorder)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-base">{bank.bankName}</CardTitle>
+        <CardTitle className={cn('text-base', palette.heading)}>
+          {bank.bankName}
+        </CardTitle>
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-muted-foreground">
-            Subtotal:{' '}
-            <span className="text-foreground">
-              {formatCurrency(subtotal)}
-            </span>
-          </span>
+          <Badge
+            variant="outline"
+            className={cn(
+              'border-transparent font-semibold',
+              palette.badgeBg,
+              palette.badgeText,
+            )}
+          >
+            Subtotal: {formatCurrency(subtotal)}
+          </Badge>
           <Button
             variant="ghost"
             size="icon"
@@ -86,16 +91,6 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {bank.transactions.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={4}
-                  className="text-center text-sm text-muted-foreground"
-                >
-                  No transactions yet.
-                </TableCell>
-              </TableRow>
-            )}
             {bank.transactions.map((row) => (
               <TableRow key={row.id}>
                 <TableCell>
@@ -131,6 +126,9 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
                     size="icon"
                     className="size-8 text-muted-foreground hover:text-destructive"
                     onClick={() => removeRow(row.id)}
+                    disabled={
+                      bank.transactions.length === 1 && isRowEmpty(row)
+                    }
                     aria-label="Remove row"
                   >
                     <Trash2 className="size-4" />
@@ -151,15 +149,9 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
             </TableRow>
           </TableFooter>
         </Table>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={addRow}
-        >
-          <Plus className="size-4" />
-          Add Transaction
-        </Button>
+        <p className="mt-2 text-xs text-muted-foreground">
+          A new row is added automatically once you fill in the last one.
+        </p>
       </CardContent>
     </Card>
   )
