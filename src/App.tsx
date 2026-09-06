@@ -300,13 +300,7 @@ function RecapApp({ onLock }: { onLock: () => void }) {
             className="flex animate-in flex-col gap-6 fade-in-0 slide-in-from-top-4 duration-300"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
-              <div>
-                <p className="text-sm font-medium">Add a bank statement</p>
-                <p className="text-xs text-muted-foreground">
-                  Pick a bank, then fill in each statement item manually
-                  below.
-                </p>
-              </div>
+              <p className="text-sm font-medium">Add a bank statement</p>
               <AddBankControl
                 existingNames={banks.map((b) => b.bankName)}
                 onAdd={addBank}
