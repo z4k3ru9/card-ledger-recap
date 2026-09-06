@@ -54,6 +54,47 @@ Since the recap data lives in one shared database, everyone who knows
 the app password sees the same months and edits — this is intentionally
 "one shared login", not per-person accounts.
 
+### Database schema
+
+The full, canonical schema is [`api/schema.sql`](api/schema.sql) — this
+is exactly what it creates, kept here for reference:
+
+```sql
+CREATE TABLE IF NOT EXISTS auth (
+  id TINYINT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
+  password_hash VARCHAR(255) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id VARCHAR(128) NOT NULL PRIMARY KEY,
+  data MEDIUMTEXT NOT NULL,
+  last_activity INT UNSIGNED NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS recaps (
+  month CHAR(7) NOT NULL PRIMARY KEY,
+  data LONGTEXT NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+- `auth.id` is pinned to `1` — there is only ever one row, one shared
+  password for everyone (see [Security model](#security-model)).
+- `sessions` is read/written entirely by
+  [`api/lib/SessionHandler.php`](api/lib/SessionHandler.php); nothing
+  else touches it directly. Expired rows aren't swept by a cron — PHP's
+  normal session garbage collection deletes them via the handler's `gc`
+  method on its usual probability, same as file-based sessions.
+- `recaps.month` is the `"YYYY-MM"` key the frontend uses everywhere
+  (`RecapsByMonth` in `src/lib/types.ts`); `recaps.data` is that whole
+  month's `{ banks, cashRows }` as a JSON string, upserted as one row by
+  `POST /api/recaps.php`.
+
+Every statement is `CREATE TABLE IF NOT EXISTS`, so re-running
+`api/schema.sql` against a database that already has these tables is a
+no-op — safe to import again after pulling an update.
+
 ## Getting started
 
 Install the frontend dependencies:
