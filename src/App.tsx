@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { FileDown, Loader2, LogOut, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -108,10 +109,17 @@ function RecapApp({ onLock }: { onLock: () => void }) {
     const current = recaps[month]
     if (!current) return
     const timeout = setTimeout(() => {
-      saveRecap(month, current).catch(() => {
-        // Best-effort - a transient failure just means this edit isn't
-        // saved yet; the next change will retry.
-      })
+      saveRecap(month, current)
+        .then(() => {
+          toast.success('Recap saved', { id: 'autosave' })
+        })
+        .catch(() => {
+          // A transient failure just means this edit isn't saved yet -
+          // the next change (or a page reload) will retry.
+          toast.error('Failed to save - check your connection and try again', {
+            id: 'autosave',
+          })
+        })
     }, 600)
     return () => clearTimeout(timeout)
   }, [recaps, month, loaded])
@@ -210,7 +218,7 @@ function RecapApp({ onLock }: { onLock: () => void }) {
             <Input
               id="month"
               type="month"
-              className="w-32 sm:w-40"
+              className="w-44 shrink-0"
               value={month}
               onChange={(e) => handleMonthChange(e.target.value)}
             />
