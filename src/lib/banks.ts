@@ -11,5 +11,10 @@ export const BANK_PRESETS = [
   'OCBC NISP',
   'Maybank',
   'BTN',
+  'UOB',
+  'Panin',
+  'DBS',
+  'HSBC',
+  'Mega',
   'Other',
 ] as const

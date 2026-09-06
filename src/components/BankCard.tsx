@@ -96,7 +96,7 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
                 <TableCell>
                   <Input
                     type="date"
-                    className="min-w-[150px]"
+                    className="w-[150px] min-w-[150px]"
                     value={row.date}
                     onChange={(e) =>
                       updateRow(row.id, { date: e.target.value })
