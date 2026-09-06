@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
-import { FileDown, Loader2, LogOut, CreditCard } from 'lucide-react'
+import { FileDown, Loader2, LogOut, ShieldAlert, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { AddBankControl } from '@/components/AddBankControl'
 import { BankCard } from '@/components/BankCard'
@@ -23,12 +29,46 @@ function currentMonthValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+// The login/encryption feature needs the Web Crypto API, which browsers
+// only expose in a "secure context" - HTTPS (or localhost). Deployed on
+// plain HTTP (common on a fresh cPanel domain before SSL is issued),
+// `crypto.subtle` is simply undefined, so this app is unusable there.
+// Fail with a clear, actionable message instead of crashing silently.
+function isSecureContext(): boolean {
+  return typeof window !== 'undefined' && Boolean(window.isSecureContext)
+}
+
+function InsecureContextNotice() {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center gap-2 text-center">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+            <ShieldAlert className="size-5" />
+          </div>
+          <CardTitle>HTTPS required</CardTitle>
+          <CardDescription>
+            This app encrypts your data locally using your browser's Web
+            Crypto API, which is only available over a secure connection.
+            Serve this site over HTTPS (most hosts, including cPanel, offer
+            a free SSL certificate you can enable) and reload this page.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  )
+}
+
 function App() {
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null)
   // Whether a password has been set up at all - tracked separately from
   // cryptoKey so that locking (cryptoKey -> null) goes back to "unlock",
   // not "setup", once a vault already exists.
   const [vaultExists, setVaultExists] = useState(hasVault)
+
+  if (!isSecureContext()) {
+    return <InsecureContextNotice />
+  }
 
   if (!cryptoKey) {
     return (
