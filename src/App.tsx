@@ -204,21 +204,19 @@ function RecapApp({ onLock }: { onLock: () => void }) {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="month">Recap month</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="month">Recap month</Label>
+          <div className="flex items-center gap-2">
             <Input
               id="month"
               type="month"
-              className="w-40"
+              className="w-32 sm:w-40"
               value={month}
               onChange={(e) => handleMonthChange(e.target.value)}
             />
-          </div>
-          <div className="flex items-center gap-2">
             <Button onClick={handleExport}>
               <FileDown className="size-4" />
-              Export PDF
+              <span className="hidden sm:inline">Export PDF</span>
             </Button>
             <ThemeToggle />
             <Button

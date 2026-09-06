@@ -64,9 +64,9 @@ export function AddBankControl({
           }}
         />
       )}
-      <Button size="sm" disabled={!canAdd} onClick={handleAdd}>
+      <Button size="sm" disabled={!canAdd} onClick={handleAdd} aria-label="Add Bank">
         <Plus className="size-4" />
-        Add Bank
+        <span className="hidden sm:inline">Add Bank</span>
       </Button>
     </div>
   )
