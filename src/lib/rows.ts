@@ -1,4 +1,4 @@
-import type { CashRow, TransactionRow } from './types'
+import type { CashRow, MonthRecap, TransactionRow } from './types'
 
 type EntryLike = Pick<TransactionRow, 'date' | 'description' | 'amount'>
 
@@ -14,6 +14,11 @@ export function createCashRow(): CashRow {
     description: '',
     amount: 0,
   }
+}
+
+/** A blank recap for a month nothing has been entered for yet. */
+export function createEmptyRecap(): MonthRecap {
+  return { banks: [], cashRows: [createCashRow()] }
 }
 
 export function isRowEmpty(row: EntryLike): boolean {

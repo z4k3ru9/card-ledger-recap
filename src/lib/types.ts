@@ -21,3 +21,11 @@ export interface CashRow {
   description: string
   amount: number
 }
+
+/** One month's worth of bank + cash data, keyed by "YYYY-MM" in AppState. */
+export interface MonthRecap {
+  banks: BankBlock[]
+  cashRows: CashRow[]
+}
+
+export type RecapsByMonth = Record<string, MonthRecap>

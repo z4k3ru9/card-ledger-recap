@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileDown, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,8 +12,9 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { generateRecapPdf } from '@/lib/pdf'
-import { createCashRow, createTransactionRow } from '@/lib/rows'
-import type { BankBlock, CashRow } from '@/lib/types'
+import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
+import { loadRecaps, saveRecaps } from '@/lib/storage'
+import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
 function currentMonthValue(): string {
   const now = new Date()
@@ -22,8 +23,21 @@ function currentMonthValue(): string {
 
 function App() {
   const [month, setMonth] = useState(currentMonthValue())
-  const [banks, setBanks] = useState<BankBlock[]>([])
-  const [cashRows, setCashRows] = useState<CashRow[]>(() => [createCashRow()])
+  // Every month gets its own recap automatically - switching the month
+  // picker below loads that month's banks/cash (creating a blank one on
+  // first visit) instead of sharing one pool of data across all months.
+  const [recaps, setRecaps] = useState<RecapsByMonth>(() => {
+    const stored = loadRecaps()
+    const initialMonth = currentMonthValue()
+    return stored[initialMonth] ? stored : { ...stored, [initialMonth]: createEmptyRecap() }
+  })
+
+  useEffect(() => {
+    saveRecaps(recaps)
+  }, [recaps])
+
+  const recap: MonthRecap = recaps[month] ?? createEmptyRecap()
+  const { banks, cashRows } = recap
 
   const bankTotal = banks.reduce(
     (sum, bank) =>
@@ -36,26 +50,48 @@ function App() {
   )
   const grandTotal = bankTotal + cashNet
 
-  function addBank(bankName: string) {
-    setBanks((prev) => [
+  function updateRecap(updater: (recap: MonthRecap) => MonthRecap) {
+    setRecaps((prev) => ({
       ...prev,
-      {
-        id: crypto.randomUUID(),
-        bankName,
-        colorIndex: prev.length,
-        transactions: [createTransactionRow()],
-      },
-    ])
+      [month]: updater(prev[month] ?? createEmptyRecap()),
+    }))
   }
 
-  function updateBank(updated: BankBlock) {
-    setBanks((prev) =>
-      prev.map((b) => (b.id === updated.id ? updated : b)),
+  function handleMonthChange(nextMonth: string) {
+    setMonth(nextMonth)
+    setRecaps((prev) =>
+      prev[nextMonth] ? prev : { ...prev, [nextMonth]: createEmptyRecap() },
     )
   }
 
+  function addBank(bankName: string) {
+    updateRecap((r) => ({
+      ...r,
+      banks: [
+        ...r.banks,
+        {
+          id: crypto.randomUUID(),
+          bankName,
+          colorIndex: r.banks.length,
+          transactions: [createTransactionRow()],
+        },
+      ],
+    }))
+  }
+
+  function updateBank(updated: BankBlock) {
+    updateRecap((r) => ({
+      ...r,
+      banks: r.banks.map((b) => (b.id === updated.id ? updated : b)),
+    }))
+  }
+
   function removeBank(id: string) {
-    setBanks((prev) => prev.filter((b) => b.id !== id))
+    updateRecap((r) => ({ ...r, banks: r.banks.filter((b) => b.id !== id) }))
+  }
+
+  function setCashRows(nextCashRows: CashRow[]) {
+    updateRecap((r) => ({ ...r, cashRows: nextCashRows }))
   }
 
   function handleExport() {
@@ -87,7 +123,7 @@ function App() {
               type="month"
               className="w-40"
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
+              onChange={(e) => handleMonthChange(e.target.value)}
             />
           </div>
           <Button onClick={handleExport}>
@@ -99,6 +135,12 @@ function App() {
       </header>
 
       <main className="mt-6 flex flex-col gap-6">
+        <p className="text-xs text-muted-foreground">
+          Each month is its own recap and is saved automatically in this
+          browser - switch the month above any time to start or continue a
+          different one.
+        </p>
+
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
           <div>
             <p className="text-sm font-medium">Add a bank statement</p>
@@ -115,8 +157,8 @@ function App() {
         {banks.length === 0 && (
           <Card className="border-dashed">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No banks added yet. Use "Add Bank" above to start entering this
-              month's statement items.
+              No banks added yet for {formatMonthLabel(month)}. Use "Add Bank"
+              above to start entering this month's statement items.
             </CardContent>
           </Card>
         )}
