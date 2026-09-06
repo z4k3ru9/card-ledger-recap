@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileDown, CreditCard } from 'lucide-react'
+import { FileDown, Loader2, LogOut, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,12 +8,14 @@ import { Separator } from '@/components/ui/separator'
 import { AddBankControl } from '@/components/AddBankControl'
 import { BankCard } from '@/components/BankCard'
 import { CashCard } from '@/components/CashCard'
+import { LoginScreen } from '@/components/LoginScreen'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { generateRecapPdf } from '@/lib/pdf'
 import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
 import { loadRecaps, saveRecaps } from '@/lib/storage'
+import { hasVault, resetVault } from '@/lib/vault'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
 function currentMonthValue(): string {
@@ -22,19 +24,71 @@ function currentMonthValue(): string {
 }
 
 function App() {
+  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null)
+  // Whether a password has been set up at all - tracked separately from
+  // cryptoKey so that locking (cryptoKey -> null) goes back to "unlock",
+  // not "setup", once a vault already exists.
+  const [vaultExists, setVaultExists] = useState(hasVault)
+
+  if (!cryptoKey) {
+    return (
+      <LoginScreen
+        mode={vaultExists ? 'unlock' : 'setup'}
+        onUnlocked={(key) => {
+          setVaultExists(true)
+          setCryptoKey(key)
+        }}
+        onReset={() => {
+          resetVault()
+          setVaultExists(false)
+        }}
+      />
+    )
+  }
+
+  return (
+    <RecapApp cryptoKey={cryptoKey} onLock={() => setCryptoKey(null)} />
+  )
+}
+
+function RecapApp({
+  cryptoKey,
+  onLock,
+}: {
+  cryptoKey: CryptoKey
+  onLock: () => void
+}) {
   const [month, setMonth] = useState(currentMonthValue())
   // Every month gets its own recap automatically - switching the month
   // picker below loads that month's banks/cash (creating a blank one on
   // first visit) instead of sharing one pool of data across all months.
-  const [recaps, setRecaps] = useState<RecapsByMonth>(() => {
-    const stored = loadRecaps()
-    const initialMonth = currentMonthValue()
-    return stored[initialMonth] ? stored : { ...stored, [initialMonth]: createEmptyRecap() }
-  })
+  const [recaps, setRecaps] = useState<RecapsByMonth>({})
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    saveRecaps(recaps)
-  }, [recaps])
+    let cancelled = false
+    ;(async () => {
+      const stored = await loadRecaps(cryptoKey)
+      const withInitial = stored[month]
+        ? stored
+        : { ...stored, [month]: createEmptyRecap() }
+      if (!cancelled) {
+        setRecaps(withInitial)
+        setLoaded(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Only runs once, right after unlocking - `month` here is just the
+    // initial value from useState above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cryptoKey])
+
+  useEffect(() => {
+    if (!loaded) return
+    saveRecaps(cryptoKey, recaps)
+  }, [cryptoKey, recaps, loaded])
 
   const recap: MonthRecap = recaps[month] ?? createEmptyRecap()
   const { banks, cashRows } = recap
@@ -98,6 +152,15 @@ function App() {
     generateRecapPdf({ month, banks, cashRows })
   }
 
+  if (!loaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Decrypting your data...
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -126,19 +189,30 @@ function App() {
               onChange={(e) => handleMonthChange(e.target.value)}
             />
           </div>
-          <Button onClick={handleExport}>
-            <FileDown className="size-4" />
-            Export PDF
-          </Button>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <Button onClick={handleExport}>
+              <FileDown className="size-4" />
+              Export PDF
+            </Button>
+            <ThemeToggle />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onLock}
+              aria-label="Lock"
+              title="Lock"
+            >
+              <LogOut className="size-4" />
+            </Button>
+          </div>
         </div>
       </header>
 
       <main className="mt-6 flex flex-col gap-6">
         <p className="text-xs text-muted-foreground">
-          Each month is its own recap and is saved automatically in this
-          browser - switch the month above any time to start or continue a
-          different one.
+          Each month is its own recap and is saved automatically, encrypted,
+          in this browser - switch the month above any time to start or
+          continue a different one.
         </p>
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
