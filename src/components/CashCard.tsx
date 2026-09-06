@@ -90,7 +90,7 @@ export function CashCard({ rows, onChange }: CashCardProps) {
             {rows.map((row) => (
               <TableRow
                 key={row.id}
-                className="animate-in fade-in-0 slide-in-from-top-2 duration-300"
+                className="animate-in fade-in-0 duration-300"
               >
                 <TableCell>
                   <Input

@@ -84,7 +84,7 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
   }
 
   return (
-    <Card className={cn('animate-in fade-in-0 slide-in-from-top-2 border-t-4 duration-300', palette.accentBorder)}>
+    <Card className={cn('animate-in fade-in-0 border-t-4 duration-300', palette.accentBorder)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className={cn('text-base', palette.heading)}>
           {bank.bankName}
@@ -142,7 +142,7 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
             {bank.transactions.map((row) => (
               <TableRow
                 key={row.id}
-                className="animate-in fade-in-0 slide-in-from-top-2 duration-300"
+                className="animate-in fade-in-0 duration-300"
               >
                 <TableCell>
                   <Input
