@@ -56,43 +56,24 @@ the app password sees the same months and edits — this is intentionally
 
 ### Database schema
 
-The full, canonical schema is [`api/schema.sql`](api/schema.sql) — this
-is exactly what it creates, kept here for reference:
+The canonical schema lives in [`api/schema.sql`](api/schema.sql) (import
+it as described in [Backend setup](#backend-setup) below) — three
+tables, kept intentionally minimal:
 
-```sql
-CREATE TABLE IF NOT EXISTS auth (
-  id TINYINT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
-  password_hash VARCHAR(255) NOT NULL,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sessions (
-  id VARCHAR(128) NOT NULL PRIMARY KEY,
-  data MEDIUMTEXT NOT NULL,
-  last_activity INT UNSIGNED NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS recaps (
-  month CHAR(7) NOT NULL PRIMARY KEY,
-  data LONGTEXT NOT NULL,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
-
-- `auth.id` is pinned to `1` — there is only ever one row, one shared
-  password for everyone (see [Security model](#security-model)).
-- `sessions` is read/written entirely by
+- `auth` — a single row (id `1`) holding the shared app password's
+  bcrypt hash. There's no other row and no plaintext password anywhere
+  in it (see [Security model](#security-model)).
+- `sessions` — login sessions, read/written entirely by
   [`api/lib/SessionHandler.php`](api/lib/SessionHandler.php); nothing
-  else touches it directly. Expired rows aren't swept by a cron — PHP's
-  normal session garbage collection deletes them via the handler's `gc`
-  method on its usual probability, same as file-based sessions.
-- `recaps.month` is the `"YYYY-MM"` key the frontend uses everywhere
-  (`RecapsByMonth` in `src/lib/types.ts`); `recaps.data` is that whole
-  month's `{ banks, cashRows }` as a JSON string, upserted as one row by
+  else touches it directly. Expired rows age out via PHP's normal
+  session garbage collection, same as file-based sessions.
+- `recaps` — one row per month (`"YYYY-MM"`), holding that month's
+  whole `{ banks, cashRows }` (see `RecapsByMonth` in
+  `src/lib/types.ts`) as a JSON string, upserted by
   `POST /api/recaps.php`.
 
-Every statement is `CREATE TABLE IF NOT EXISTS`, so re-running
-`api/schema.sql` against a database that already has these tables is a
+Every statement in the file is `CREATE TABLE IF NOT EXISTS`, so
+re-running it against a database that already has these tables is a
 no-op — safe to import again after pulling an update.
 
 ## Getting started
@@ -148,10 +129,15 @@ domain under `/api` to actually work; see
 - It's one shared password for everyone who has it, not per-person
   accounts, and all recap data is centrally stored — everyone with the
   password sees the same data.
-- There is no self-service password reset. If it's forgotten, an admin
-  updates the `password_hash` column in the `auth` table directly (e.g.
-  with `php -r "echo password_hash('new-password', PASSWORD_BCRYPT);"`
-  and an `UPDATE` via phpMyAdmin).
+- There is no self-service password reset. If it's forgotten, whoever
+  has direct database access can set a new one by replacing the
+  `password_hash` value in the `auth` table with a fresh bcrypt hash
+  generated server-side (`password_hash()`) — never store or transmit
+  the plaintext password to do this.
+- Restrict who can reach phpMyAdmin/database tools and the hosting
+  control panel itself — anyone with direct database access can read
+  every recap and reset the app password, so treat that access with the
+  same care as the app password.
 - **Use HTTPS in production.** The password is sent to the login
   endpoint on every sign-in; without HTTPS it (and the session cookie)
   travel in the clear. Enable a free SSL certificate (cPanel's AutoSSL
