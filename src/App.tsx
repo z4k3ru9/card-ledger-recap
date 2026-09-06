@@ -94,6 +94,9 @@ function RecapApp({ onLock }: { onLock: () => void }) {
   // followed by the layout sliding in reads better than an instant,
   // jarring swap.
   const [monthTransitioning, setMonthTransitioning] = useState(false)
+  // Set right after a bank is added so its card can scroll itself into
+  // view instead of leaving the user to scroll down and find it.
+  const [justAddedBankId, setJustAddedBankId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -167,18 +170,20 @@ function RecapApp({ onLock }: { onLock: () => void }) {
   }
 
   function addBank(bankName: string) {
+    const newBankId = crypto.randomUUID()
     updateRecap((r) => ({
       ...r,
       banks: [
         ...r.banks,
         {
-          id: crypto.randomUUID(),
+          id: newBankId,
           bankName,
           colorIndex: r.banks.length,
           transactions: [createTransactionRow()],
         },
       ],
     }))
+    setJustAddedBankId(newBankId)
   }
 
   function updateBank(updated: BankBlock) {
@@ -248,18 +253,14 @@ function RecapApp({ onLock }: { onLock: () => void }) {
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <CreditCard className="size-5" />
             </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">
-                Monthly Credit Card Usage Recap
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Track statement items per bank and cash movements, then export
-                a PDF recap for {formatMonthLabel(month)}.
-              </p>
-            </div>
+            <h1 className="text-xl font-semibold tracking-tight">
+              Monthly Credit Card Usage Recap
+            </h1>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="month">Recap month</Label>
+            <Label htmlFor="month" className="sr-only">
+              Recap month
+            </Label>
             <div className="flex items-center gap-2">
               <Input
                 id="month"
@@ -298,12 +299,6 @@ function RecapApp({ onLock }: { onLock: () => void }) {
             key={month}
             className="flex animate-in flex-col gap-6 fade-in-0 slide-in-from-top-4 duration-300"
           >
-            <p className="text-xs text-muted-foreground">
-              Each month is its own recap, saved automatically to the shared
-              database - switch the month above any time to start or continue
-              a different one.
-            </p>
-
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
               <div>
                 <p className="text-sm font-medium">Add a bank statement</p>
@@ -333,6 +328,8 @@ function RecapApp({ onLock }: { onLock: () => void }) {
                 bank={bank}
                 onChange={updateBank}
                 onRemove={() => removeBank(bank.id)}
+                justAdded={bank.id === justAddedBankId}
+                onFocused={() => setJustAddedBankId(null)}
               />
             ))}
 

@@ -170,9 +170,6 @@ export function CashCard({ rows, onChange }: CashCardProps) {
             </TableRow>
           </TableFooter>
         </Table>
-        <p className="mt-2 text-xs text-muted-foreground">
-          A new row is added automatically once you fill in the last one.
-        </p>
       </CardContent>
     </Card>
   )

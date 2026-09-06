@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react'
 import { AmountInput } from '@/components/AmountInput'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,10 @@ interface BankCardProps {
   bank: BankBlock
   onChange: (bank: BankBlock) => void
   onRemove: () => void
+  /** True for exactly one render right after this bank was added. */
+  justAdded?: boolean
+  /** Called once the just-added scroll/focus has happened. */
+  onFocused?: () => void
 }
 
 type SortDir = 'asc' | 'desc'
@@ -43,10 +47,39 @@ function compareByDate(a: TransactionRow, b: TransactionRow, dir: SortDir) {
   return dir === 'asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)
 }
 
-export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
+export function BankCard({
+  bank,
+  onChange,
+  onRemove,
+  justAdded,
+  onFocused,
+}: BankCardProps) {
   const [sortDir, setSortDir] = useState<SortDir | null>(null)
   const subtotal = bank.transactions.reduce((sum, r) => sum + r.amount, 0)
   const palette = paletteFor(bank.colorIndex)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // Bring a freshly-added bank into view instead of leaving the user to
+  // scroll down and find it themselves. Scrolled to manually (not
+  // scrollIntoView + a fixed scroll-margin) because the sticky header's
+  // height varies a lot - short on desktop, much taller on narrow phones
+  // where the title wraps to two lines - so only measuring it live gets
+  // the offset right everywhere. Focus lands on the card itself (not a
+  // specific field), so this doesn't pop open a native date picker or
+  // the on-screen keyboard.
+  useEffect(() => {
+    if (!justAdded || !cardRef.current) return
+    const header = document.querySelector('header')
+    const headerHeight = header?.getBoundingClientRect().height ?? 0
+    const rect = cardRef.current.getBoundingClientRect()
+    const fullyVisible = rect.top >= headerHeight && rect.bottom <= window.innerHeight
+    if (!fullyVisible) {
+      const cardTop = rect.top + window.scrollY
+      window.scrollTo({ top: cardTop - headerHeight - 16, behavior: 'smooth' })
+    }
+    cardRef.current.focus({ preventScroll: true })
+    onFocused?.()
+  }, [justAdded, onFocused])
 
   function updateRow(id: string, patch: Partial<TransactionRow>) {
     const updated = bank.transactions.map((row) =>
@@ -84,7 +117,14 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
   }
 
   return (
-    <Card className={cn('animate-in fade-in-0 border-t-4 duration-300', palette.accentBorder)}>
+    <Card
+      ref={cardRef}
+      tabIndex={-1}
+      className={cn(
+        'animate-in fade-in-0 border-t-4 outline-none duration-300',
+        palette.accentBorder,
+      )}
+    >
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className={cn('text-base', palette.heading)}>
           {bank.bankName}
@@ -201,9 +241,6 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
             </TableRow>
           </TableFooter>
         </Table>
-        <p className="mt-2 text-xs text-muted-foreground">
-          A new row is added automatically once you fill in the last one.
-        </p>
       </CardContent>
     </Card>
   )
