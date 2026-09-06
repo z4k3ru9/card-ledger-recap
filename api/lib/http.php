@@ -3,14 +3,17 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
-function clr_json($data, int $status = 200): never
+// No `: never` return type here (PHP 8.1+ only, and both of these still
+// exit either way) - keeps this compatible with PHP 8.0, which is a more
+// realistic minimum for shared/cPanel hosting.
+function clr_json($data, int $status = 200)
 {
     http_response_code($status);
     echo json_encode($data);
     exit;
 }
 
-function clr_json_error(int $status, string $message): never
+function clr_json_error(int $status, string $message)
 {
     clr_json(['error' => $message], $status);
 }

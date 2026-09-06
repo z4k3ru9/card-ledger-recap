@@ -96,6 +96,12 @@ Open http://localhost:5173.
 
 ## Backend setup
 
+Requires **PHP 8.0 or newer** (cPanel's "MultiPHP Manager" lets you pick
+the version per domain) with the `pdo_mysql` extension, which is enabled
+by default on virtually all PHP installs. Hitting any `api/` endpoint on
+an older PHP returns a clear JSON error instead of a blank 500, so this
+is easy to confirm after deploying.
+
 1. Create a MySQL database (locally, or in cPanel's **MySQL Databases**)
    and import the schema once:
    ```bash
