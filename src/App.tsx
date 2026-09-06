@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { FileDown, Loader2, LogOut, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { generateRecapPdf } from '@/lib/pdf'
 import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
+import { collectItemSuggestions, ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
 import { fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
@@ -127,6 +128,11 @@ function RecapApp({ onLock }: { onLock: () => void }) {
   const recap: MonthRecap = recaps[month] ?? createEmptyRecap()
   const { banks, cashRows } = recap
 
+  // Every distinct "Item" ever entered (any bank, any month already
+  // loaded), most-used first - backs the datalist every description
+  // input points at, so repeated items autocomplete as you type.
+  const itemSuggestions = useMemo(() => collectItemSuggestions(recaps), [recaps])
+
   const bankTotal = banks.reduce(
     (sum, bank) =>
       sum + bank.transactions.reduce((s, r) => s + r.amount, 0),
@@ -197,6 +203,11 @@ function RecapApp({ onLock }: { onLock: () => void }) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <datalist id={ITEM_SUGGESTIONS_LIST_ID}>
+        {itemSuggestions.map((description) => (
+          <option key={description} value={description} />
+        ))}
+      </datalist>
       <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">

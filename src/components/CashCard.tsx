@@ -28,6 +28,7 @@ import {
 import { formatCurrency } from '@/lib/format'
 import { CASH_PALETTE } from '@/lib/palette'
 import { createCashRow, isRowEmpty, withTrailingEmptyRow } from '@/lib/rows'
+import { ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
 import { cn } from '@/lib/utils'
 import type { CashRow } from '@/lib/types'
 
@@ -124,6 +125,7 @@ export function CashCard({ rows, onChange }: CashCardProps) {
                   <Input
                     placeholder="e.g. ATM withdrawal, Petty cash"
                     className="min-w-[200px]"
+                    list={ITEM_SUGGESTIONS_LIST_ID}
                     value={row.description}
                     onChange={(e) =>
                       updateRow(row.id, { description: e.target.value })

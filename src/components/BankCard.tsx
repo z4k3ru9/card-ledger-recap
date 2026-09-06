@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/format'
 import { paletteFor } from '@/lib/palette'
 import { createTransactionRow, isRowEmpty, withTrailingEmptyRow } from '@/lib/rows'
+import { ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
 import type { BankBlock, TransactionRow } from '@/lib/types'
 
 interface BankCardProps {
@@ -107,6 +108,7 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
                   <Input
                     placeholder="e.g. Groceries, Fuel, Subscription"
                     className="min-w-[200px]"
+                    list={ITEM_SUGGESTIONS_LIST_ID}
                     value={row.description}
                     onChange={(e) =>
                       updateRow(row.id, { description: e.target.value })
