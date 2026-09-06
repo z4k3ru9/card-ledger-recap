@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { FileDown, Loader2, LogOut, ShieldAlert, CreditCard } from 'lucide-react'
+import { FileDown, Loader2, LogOut, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -20,8 +19,7 @@ import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { generateRecapPdf } from '@/lib/pdf'
 import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
-import { loadRecaps, saveRecaps } from '@/lib/storage'
-import { hasVault, resetVault } from '@/lib/vault'
+import { fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
 function currentMonthValue(): string {
@@ -29,106 +27,94 @@ function currentMonthValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-// The login/encryption feature needs the Web Crypto API, which browsers
-// only expose in a "secure context" - HTTPS (or localhost). Deployed on
-// plain HTTP (common on a fresh cPanel domain before SSL is issued),
-// `crypto.subtle` is simply undefined, so this app is unusable there.
-// Fail with a clear, actionable message instead of crashing silently.
-function isSecureContext(): boolean {
-  return typeof window !== 'undefined' && Boolean(window.isSecureContext)
-}
-
-function InsecureContextNotice() {
-  return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="items-center gap-2 text-center">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-            <ShieldAlert className="size-5" />
-          </div>
-          <CardTitle>HTTPS required</CardTitle>
-          <CardDescription>
-            This app encrypts your data locally using your browser's Web
-            Crypto API, which is only available over a secure connection.
-            Serve this site over HTTPS (most hosts, including cPanel, offer
-            a free SSL certificate you can enable) and reload this page.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    </div>
-  )
-}
+type AuthStatus = 'loading' | 'setup' | 'login' | 'ready'
 
 function App() {
-  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null)
-  // Whether a password has been set up at all - tracked separately from
-  // cryptoKey so that locking (cryptoKey -> null) goes back to "unlock",
-  // not "setup", once a vault already exists.
-  const [vaultExists, setVaultExists] = useState(hasVault)
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
 
-  if (!isSecureContext()) {
-    return <InsecureContextNotice />
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const status = await getStatus()
+        if (cancelled) return
+        setAuthStatus(status.needsSetup ? 'setup' : status.authenticated ? 'ready' : 'login')
+      } catch {
+        if (!cancelled) setAuthStatus('login')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (authStatus === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Loading...
+      </div>
+    )
   }
 
-  if (!cryptoKey) {
+  if (authStatus === 'setup' || authStatus === 'login') {
     return (
       <LoginScreen
-        mode={vaultExists ? 'unlock' : 'setup'}
-        onUnlocked={(key) => {
-          setVaultExists(true)
-          setCryptoKey(key)
-        }}
-        onReset={() => {
-          resetVault()
-          setVaultExists(false)
-        }}
+        mode={authStatus === 'setup' ? 'setup' : 'unlock'}
+        onSignedIn={() => setAuthStatus('ready')}
       />
     )
   }
 
   return (
-    <RecapApp cryptoKey={cryptoKey} onLock={() => setCryptoKey(null)} />
+    <RecapApp
+      onLock={() => {
+        void logout()
+        setAuthStatus('login')
+      }}
+    />
   )
 }
 
-function RecapApp({
-  cryptoKey,
-  onLock,
-}: {
-  cryptoKey: CryptoKey
-  onLock: () => void
-}) {
+function RecapApp({ onLock }: { onLock: () => void }) {
   const [month, setMonth] = useState(currentMonthValue())
   // Every month gets its own recap automatically - switching the month
   // picker below loads that month's banks/cash (creating a blank one on
   // first visit) instead of sharing one pool of data across all months.
+  // The whole set is fetched once from the shared MySQL database; edits
+  // are then saved back one month at a time (see the debounced effect
+  // below), not as one giant blob.
   const [recaps, setRecaps] = useState<RecapsByMonth>({})
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const stored = await loadRecaps(cryptoKey)
-      const withInitial = stored[month]
-        ? stored
-        : { ...stored, [month]: createEmptyRecap() }
+      const stored = await fetchRecaps().catch(() => ({}) as RecapsByMonth)
       if (!cancelled) {
-        setRecaps(withInitial)
+        setRecaps(stored)
         setLoaded(true)
       }
     })()
     return () => {
       cancelled = true
     }
-    // Only runs once, right after unlocking - `month` here is just the
-    // initial value from useState above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cryptoKey])
+  }, [])
 
+  // Debounced autosave of just the current month, so fast typing doesn't
+  // fire a request per keystroke.
   useEffect(() => {
     if (!loaded) return
-    saveRecaps(cryptoKey, recaps)
-  }, [cryptoKey, recaps, loaded])
+    const current = recaps[month]
+    if (!current) return
+    const timeout = setTimeout(() => {
+      saveRecap(month, current).catch(() => {
+        // Best-effort - a transient failure just means this edit isn't
+        // saved yet; the next change will retry.
+      })
+    }, 600)
+    return () => clearTimeout(timeout)
+  }, [recaps, month, loaded])
 
   const recap: MonthRecap = recaps[month] ?? createEmptyRecap()
   const { banks, cashRows } = recap
@@ -196,7 +182,7 @@ function RecapApp({
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        Decrypting your data...
+        Loading recaps...
       </div>
     )
   }
@@ -239,8 +225,8 @@ function RecapApp({
               variant="outline"
               size="icon"
               onClick={onLock}
-              aria-label="Lock"
-              title="Lock"
+              aria-label="Sign out"
+              title="Sign out"
             >
               <LogOut className="size-4" />
             </Button>
@@ -250,9 +236,9 @@ function RecapApp({
 
       <main className="mt-6 flex flex-col gap-6">
         <p className="text-xs text-muted-foreground">
-          Each month is its own recap and is saved automatically, encrypted,
-          in this browser - switch the month above any time to start or
-          continue a different one.
+          Each month is its own recap, saved automatically to the shared
+          database - switch the month above any time to start or continue a
+          different one.
         </p>
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">

@@ -1,0 +1,11 @@
+# Only the endpoint scripts in this directory are meant to be requested
+# directly - config, shared library code, and the schema file are not.
+<FilesMatch "^(config(\.sample)?\.php|schema\.sql|bootstrap\.php)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>

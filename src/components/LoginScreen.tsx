@@ -10,16 +10,15 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createVault, unlockVault } from '@/lib/vault'
+import { ApiError, login, setupPassword } from '@/lib/api'
 
 interface LoginScreenProps {
-  /** "setup" the first time (no vault yet), "unlock" every time after. */
+  /** "setup" the first time (no shared password yet), "unlock" every time after. */
   mode: 'setup' | 'unlock'
-  onUnlocked: (key: CryptoKey) => void
-  onReset: () => void
+  onSignedIn: () => void
 }
 
-export function LoginScreen({ mode, onUnlocked, onReset }: LoginScreenProps) {
+export function LoginScreen({ mode, onSignedIn }: LoginScreenProps) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -42,25 +41,17 @@ export function LoginScreen({ mode, onUnlocked, onReset }: LoginScreenProps) {
 
     setBusy(true)
     try {
-      const key =
-        mode === 'setup'
-          ? await createVault(password)
-          : await unlockVault(password)
-      if (!key) {
-        setError('Incorrect password.')
-        return
+      if (mode === 'setup') {
+        await setupPassword(password)
+      } else {
+        await login(password)
       }
-      onUnlocked(key)
+      onSignedIn()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.')
     } finally {
       setBusy(false)
     }
-  }
-
-  function handleReset() {
-    const confirmed = window.confirm(
-      'This permanently deletes all saved recaps on this device - they were encrypted with the old password and cannot be recovered. Continue?',
-    )
-    if (confirmed) onReset()
   }
 
   return (
@@ -71,12 +62,12 @@ export function LoginScreen({ mode, onUnlocked, onReset }: LoginScreenProps) {
             <CreditCard className="size-5" />
           </div>
           <CardTitle>
-            {mode === 'setup' ? 'Set an app password' : 'Enter your password'}
+            {mode === 'setup' ? 'Set the app password' : 'Enter the app password'}
           </CardTitle>
           <CardDescription>
             {mode === 'setup'
-              ? 'Your recap data is encrypted on this device with this password. There is no recovery - if it is lost, the data cannot be decrypted.'
-              : 'Your recap data is encrypted on this device and needs your password to unlock.'}
+              ? 'This recap is shared - anyone with this password can view and edit it, stored centrally in the database, not just on this device.'
+              : 'Recap data is stored centrally and shared by everyone with this password.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -113,16 +104,13 @@ export function LoginScreen({ mode, onUnlocked, onReset }: LoginScreenProps) {
               ) : (
                 <Lock className="size-4" />
               )}
-              {mode === 'setup' ? 'Create password' : 'Unlock'}
+              {mode === 'setup' ? 'Create password' : 'Sign in'}
             </Button>
             {mode === 'unlock' && (
-              <button
-                type="button"
-                onClick={handleReset}
-                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-              >
-                Forgot password? Reset app data
-              </button>
+              <p className="text-center text-xs text-muted-foreground">
+                Forgot the password? An admin can reset it directly in the
+                database (the <code>auth</code> table).
+              </p>
             )}
           </form>
         </CardContent>

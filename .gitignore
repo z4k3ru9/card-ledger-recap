@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Backend config (real DB credentials - copy api/config.sample.php instead)
+api/config.php
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -15,4 +15,13 @@ export default defineConfig({
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
+  server: {
+    // In dev, `npm run dev:api` serves the PHP backend on :8787 (PHP's
+    // built-in server) - proxy /api there so the frontend can be built
+    // and tested exactly like it runs in production (same relative
+    // `api/...` requests, just forwarded instead of same-process).
+    proxy: {
+      '/api': 'http://localhost:8787',
+    },
+  },
 })
