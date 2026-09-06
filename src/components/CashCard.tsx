@@ -88,7 +88,10 @@ export function CashCard({ rows, onChange }: CashCardProps) {
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow
+                key={row.id}
+                className="animate-in fade-in-0 slide-in-from-top-2 duration-300"
+              >
                 <TableCell>
                   <Input
                     type="date"

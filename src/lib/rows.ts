@@ -30,12 +30,24 @@ export function isRowEmpty(row: EntryLike): boolean {
  * transaction is auto-added the moment the current last row gets any
  * data - no explicit "Add" button needed. Also guarantees the list is
  * never fully empty.
+ *
+ * Also collapses any *other* row that's been edited back down to blank
+ * (e.g. typing an amount/item with no date yet, then deleting it again)
+ * - otherwise it would linger as a second, stray blank row instead of
+ * disappearing, since only the very last row was ever checked for
+ * emptiness. The already-blank trailing row's identity is reused when
+ * there is one, so unrelated edits elsewhere don't remount it.
  */
 export function withTrailingEmptyRow<T extends EntryLike>(
   rows: T[],
   makeEmpty: () => T,
 ): T[] {
-  if (rows.length === 0) return [makeEmpty()]
-  const last = rows[rows.length - 1]
-  return isRowEmpty(last) ? rows : [...rows, makeEmpty()]
+  const trailingEmpty =
+    rows.length > 0 && isRowEmpty(rows[rows.length - 1])
+      ? rows[rows.length - 1]
+      : null
+  const filled = rows.filter(
+    (row) => row !== trailingEmpty && !isRowEmpty(row),
+  )
+  return [...filled, trailingEmpty ?? makeEmpty()]
 }

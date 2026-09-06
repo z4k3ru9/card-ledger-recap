@@ -23,9 +23,16 @@ function cashNet(cashRows: CashRow[]): number {
   )
 }
 
+export function recapPdfFilename(month: string): string {
+  return `rekap-kartu-kredit-${month}.pdf`
+}
+
 // All wording in the exported PDF is in Bahasa Indonesia, regardless of
-// the app UI's language.
-export function generateRecapPdf({ month, banks, cashRows }: GeneratePdfArgs) {
+// the app UI's language. Returns the built document rather than saving
+// it directly, so callers can choose to download it or (where the Web
+// Share API supports sharing files) hand it straight to the share
+// sheet instead.
+export function buildRecapPdf({ month, banks, cashRows }: GeneratePdfArgs): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
 
@@ -181,5 +188,5 @@ export function generateRecapPdf({ month, banks, cashRows }: GeneratePdfArgs) {
     },
   })
 
-  doc.save(`rekap-kartu-kredit-${month}.pdf`)
+  return doc
 }

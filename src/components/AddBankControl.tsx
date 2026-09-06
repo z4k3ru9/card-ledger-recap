@@ -20,28 +20,37 @@ export function AddBankControl({
   existingNames,
   onAdd,
 }: AddBankControlProps) {
-  const [selected, setSelected] = useState<string>('')
+  // "Other" is the one case that still needs an explicit confirm step
+  // (a name has to be typed first) - every preset bank adds itself the
+  // moment it's picked, no separate button needed.
+  const [pendingOther, setPendingOther] = useState(false)
   const [customName, setCustomName] = useState('')
 
   const availablePresets = BANK_PRESETS.filter(
     (name) => name === 'Other' || !existingNames.includes(name),
   )
 
-  const isOther = selected === 'Other'
   const trimmedCustom = customName.trim()
-  const canAdd = isOther ? trimmedCustom.length > 0 : selected.length > 0
 
-  function handleAdd() {
-    if (!canAdd) return
-    const name = isOther ? trimmedCustom : selected
-    onAdd(name)
-    setSelected('')
+  function handleSelect(value: string | null) {
+    if (!value) return
+    if (value === 'Other') {
+      setPendingOther(true)
+      return
+    }
+    onAdd(value)
+  }
+
+  function handleAddCustom() {
+    if (!trimmedCustom) return
+    onAdd(trimmedCustom)
+    setPendingOther(false)
     setCustomName('')
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select value={selected} onValueChange={(value) => setSelected(value ?? '')}>
+      <Select value="" onValueChange={handleSelect}>
         <SelectTrigger className="w-44">
           <SelectValue placeholder="Choose a bank" />
         </SelectTrigger>
@@ -53,21 +62,29 @@ export function AddBankControl({
           ))}
         </SelectContent>
       </Select>
-      {isOther && (
-        <Input
-          className="w-44"
-          placeholder="Bank name"
-          value={customName}
-          onChange={(e) => setCustomName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleAdd()
-          }}
-        />
+      {pendingOther && (
+        <>
+          <Input
+            className="w-44"
+            autoFocus
+            placeholder="Bank name"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAddCustom()
+            }}
+          />
+          <Button
+            size="sm"
+            disabled={!trimmedCustom}
+            onClick={handleAddCustom}
+            aria-label="Add Bank"
+          >
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">Add</span>
+          </Button>
+        </>
       )}
-      <Button size="sm" disabled={!canAdd} onClick={handleAdd} aria-label="Add Bank">
-        <Plus className="size-4" />
-        <span className="hidden sm:inline">Add Bank</span>
-      </Button>
     </div>
   )
 }

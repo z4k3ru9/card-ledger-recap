@@ -1,4 +1,5 @@
-import { Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react'
 import { AmountInput } from '@/components/AmountInput'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +32,19 @@ interface BankCardProps {
   onRemove: () => void
 }
 
+type SortDir = 'asc' | 'desc'
+
+// Rows with no date yet always sort after every dated row, in either
+// direction - there's nothing "logical" to say about their order yet.
+function compareByDate(a: TransactionRow, b: TransactionRow, dir: SortDir) {
+  if (!a.date && !b.date) return 0
+  if (!a.date) return 1
+  if (!b.date) return -1
+  return dir === 'asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)
+}
+
 export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
+  const [sortDir, setSortDir] = useState<SortDir | null>(null)
   const subtotal = bank.transactions.reduce((sum, r) => sum + r.amount, 0)
   const palette = paletteFor(bank.colorIndex)
 
@@ -53,8 +66,25 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
     })
   }
 
+  function handleSortByDate() {
+    const nextDir: SortDir = sortDir === 'asc' ? 'desc' : 'asc'
+    setSortDir(nextDir)
+    // The always-blank trailing row stays last no matter what - only the
+    // rows that actually have data get reordered.
+    const trailing = bank.transactions[bank.transactions.length - 1]
+    const hasTrailingBlank = trailing && isRowEmpty(trailing)
+    const filled = hasTrailingBlank
+      ? bank.transactions.slice(0, -1)
+      : bank.transactions
+    const sorted = [...filled].sort((a, b) => compareByDate(a, b, nextDir))
+    onChange({
+      ...bank,
+      transactions: hasTrailingBlank ? [...sorted, trailing] : sorted,
+    })
+  }
+
   return (
-    <Card className={cn('border-t-4', palette.accentBorder)}>
+    <Card className={cn('animate-in fade-in-0 slide-in-from-top-2 border-t-4 duration-300', palette.accentBorder)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className={cn('text-base', palette.heading)}>
           {bank.bankName}
@@ -85,7 +115,24 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-40">Date</TableHead>
+              <TableHead className="w-40">
+                <button
+                  type="button"
+                  onClick={handleSortByDate}
+                  className="inline-flex items-center gap-1 hover:text-foreground"
+                  aria-label="Sort by date"
+                  title="Sort by date"
+                >
+                  Date
+                  {sortDir === 'asc' ? (
+                    <ArrowUp className="size-3.5" />
+                  ) : sortDir === 'desc' ? (
+                    <ArrowDown className="size-3.5" />
+                  ) : (
+                    <ArrowUpDown className="size-3.5 opacity-50" />
+                  )}
+                </button>
+              </TableHead>
               <TableHead>Item</TableHead>
               <TableHead className="w-40 text-right">Amount</TableHead>
               <TableHead className="w-10" />
@@ -93,7 +140,10 @@ export function BankCard({ bank, onChange, onRemove }: BankCardProps) {
           </TableHeader>
           <TableBody>
             {bank.transactions.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow
+                key={row.id}
+                className="animate-in fade-in-0 slide-in-from-top-2 duration-300"
+              >
                 <TableCell>
                   <Input
                     type="date"

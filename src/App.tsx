@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { FileDown, Loader2, LogOut, CreditCard } from 'lucide-react'
+import { Loader2, LogOut, CreditCard, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,10 +15,11 @@ import { AddBankControl } from '@/components/AddBankControl'
 import { BankCard } from '@/components/BankCard'
 import { CashCard } from '@/components/CashCard'
 import { LoginScreen } from '@/components/LoginScreen'
+import { ScrollToTopButton } from '@/components/ScrollToTopButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
-import { generateRecapPdf } from '@/lib/pdf'
+import { buildRecapPdf, recapPdfFilename } from '@/lib/pdf'
 import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
 import { collectItemSuggestions, ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
 import { fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
@@ -88,6 +89,11 @@ function RecapApp({ onLock }: { onLock: () => void }) {
   // below), not as one giant blob.
   const [recaps, setRecaps] = useState<RecapsByMonth>({})
   const [loaded, setLoaded] = useState(false)
+  // Briefly shown while switching months, purely for visual feedback -
+  // the target month's data is already in memory, but a beat of spinner
+  // followed by the layout sliding in reads better than an instant,
+  // jarring swap.
+  const [monthTransitioning, setMonthTransitioning] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -152,10 +158,12 @@ function RecapApp({ onLock }: { onLock: () => void }) {
   }
 
   function handleMonthChange(nextMonth: string) {
+    setMonthTransitioning(true)
     setMonth(nextMonth)
     setRecaps((prev) =>
       prev[nextMonth] ? prev : { ...prev, [nextMonth]: createEmptyRecap() },
     )
+    window.setTimeout(() => setMonthTransitioning(false), 300)
   }
 
   function addBank(bankName: string) {
@@ -188,8 +196,34 @@ function RecapApp({ onLock }: { onLock: () => void }) {
     updateRecap((r) => ({ ...r, cashRows: nextCashRows }))
   }
 
-  function handleExport() {
-    generateRecapPdf({ month, banks, cashRows })
+  async function handleExport() {
+    const doc = buildRecapPdf({ month, banks, cashRows })
+    const filename = recapPdfFilename(month)
+    const blob = doc.output('blob')
+    const file = new File([blob], filename, { type: 'application/pdf' })
+
+    const canShareFile =
+      typeof navigator.share === 'function' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [file] })
+
+    if (canShareFile) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: filename,
+          text: `Rekap ${formatMonthLabel(month)}`,
+        })
+        return
+      } catch (err) {
+        // The user cancelling the share sheet isn't an error - just do
+        // nothing. Anything else (no share target available, etc.)
+        // falls through to a plain download instead.
+        if (err instanceof Error && err.name === 'AbortError') return
+      }
+    }
+
+    doc.save(filename)
   }
 
   if (!loaded) {
@@ -202,127 +236,143 @@ function RecapApp({ onLock }: { onLock: () => void }) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+    <div className="min-h-screen">
       <datalist id={ITEM_SUGGESTIONS_LIST_ID}>
         {itemSuggestions.map((description) => (
           <option key={description} value={description} />
         ))}
       </datalist>
-      <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <CreditCard className="size-5" />
+      <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-8">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <CreditCard className="size-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Monthly Credit Card Usage Recap
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Track statement items per bank and cash movements, then export
+                a PDF recap for {formatMonthLabel(month)}.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              Monthly Credit Card Usage Recap
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Track statement items per bank and cash movements, then export
-              a PDF recap for {formatMonthLabel(month)}.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="month">Recap month</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="month"
-              type="month"
-              className="w-44 shrink-0"
-              value={month}
-              onChange={(e) => handleMonthChange(e.target.value)}
-            />
-            <Button onClick={handleExport}>
-              <FileDown className="size-4" />
-              <span className="hidden sm:inline">Export PDF</span>
-            </Button>
-            <ThemeToggle />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onLock}
-              aria-label="Sign out"
-              title="Sign out"
-            >
-              <LogOut className="size-4" />
-            </Button>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="month">Recap month</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="month"
+                type="month"
+                className="w-44 shrink-0"
+                value={month}
+                onChange={(e) => handleMonthChange(e.target.value)}
+              />
+              <Button onClick={handleExport}>
+                <Share2 className="size-4" />
+                <span className="hidden sm:inline">Share PDF</span>
+              </Button>
+              <ThemeToggle />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={onLock}
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <LogOut className="size-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mt-6 flex flex-col gap-6">
-        <p className="text-xs text-muted-foreground">
-          Each month is its own recap, saved automatically to the shared
-          database - switch the month above any time to start or continue a
-          different one.
-        </p>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
-          <div>
-            <p className="text-sm font-medium">Add a bank statement</p>
-            <p className="text-xs text-muted-foreground">
-              Pick a bank, then fill in each statement item manually below.
-            </p>
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        {monthTransitioning ? (
+          <div className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" />
+            Loading {formatMonthLabel(month)}...
           </div>
-          <AddBankControl
-            existingNames={banks.map((b) => b.bankName)}
-            onAdd={addBank}
-          />
-        </div>
+        ) : (
+          <main
+            key={month}
+            className="flex animate-in flex-col gap-6 fade-in-0 slide-in-from-top-4 duration-300"
+          >
+            <p className="text-xs text-muted-foreground">
+              Each month is its own recap, saved automatically to the shared
+              database - switch the month above any time to start or continue
+              a different one.
+            </p>
 
-        {banks.length === 0 && (
-          <Card className="border-dashed">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No banks added yet for {formatMonthLabel(month)}. Use "Add Bank"
-              above to start entering this month's statement items.
-            </CardContent>
-          </Card>
-        )}
-
-        {banks.map((bank) => (
-          <BankCard
-            key={bank.id}
-            bank={bank}
-            onChange={updateBank}
-            onRemove={() => removeBank(bank.id)}
-          />
-        ))}
-
-        <CashCard rows={cashRows} onChange={setCashRows} />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {banks.map((bank) => (
-              <div
-                key={bank.id}
-                className="flex items-center justify-between text-sm"
-              >
-                <span className={paletteFor(bank.colorIndex).heading}>
-                  {bank.bankName}
-                </span>
-                <span>
-                  {formatCurrency(
-                    bank.transactions.reduce((s, r) => s + r.amount, 0),
-                  )}
-                </span>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
+              <div>
+                <p className="text-sm font-medium">Add a bank statement</p>
+                <p className="text-xs text-muted-foreground">
+                  Pick a bank, then fill in each statement item manually
+                  below.
+                </p>
               </div>
+              <AddBankControl
+                existingNames={banks.map((b) => b.bankName)}
+                onAdd={addBank}
+              />
+            </div>
+
+            {banks.length === 0 && (
+              <Card className="border-dashed">
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  No banks added yet for {formatMonthLabel(month)}. Use "Add
+                  Bank" above to start entering this month's statement items.
+                </CardContent>
+              </Card>
+            )}
+
+            {banks.map((bank) => (
+              <BankCard
+                key={bank.id}
+                bank={bank}
+                onChange={updateBank}
+                onRemove={() => removeBank(bank.id)}
+              />
             ))}
-            <div className="flex items-center justify-between text-sm">
-              <span className={CASH_PALETTE.heading}>Cash (net)</span>
-              <span>{formatCurrency(cashNet)}</span>
-            </div>
-            <Separator className="my-1" />
-            <div className="flex items-center justify-between text-base font-semibold">
-              <span>Grand Total</span>
-              <span>{formatCurrency(grandTotal)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
+
+            <CashCard rows={cashRows} onChange={setCashRows} />
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {banks.map((bank) => (
+                  <div
+                    key={bank.id}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <span className={paletteFor(bank.colorIndex).heading}>
+                      {bank.bankName}
+                    </span>
+                    <span>
+                      {formatCurrency(
+                        bank.transactions.reduce((s, r) => s + r.amount, 0),
+                      )}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-sm">
+                  <span className={CASH_PALETTE.heading}>Cash (net)</span>
+                  <span>{formatCurrency(cashNet)}</span>
+                </div>
+                <Separator className="my-1" />
+                <div className="flex items-center justify-between text-base font-semibold">
+                  <span>Grand Total</span>
+                  <span>{formatCurrency(grandTotal)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </main>
+        )}
+      </div>
+      <ScrollToTopButton />
     </div>
   )
 }
