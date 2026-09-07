@@ -31,6 +31,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface AuthStatus {
   needsSetup: boolean
   authenticated: boolean
+  /** False once the shared password has been revoked in favor of passkeys. */
+  passwordEnabled: boolean
+  passkeyCount: number
 }
 
 export function getStatus(): Promise<AuthStatus> {
@@ -59,4 +62,64 @@ export async function saveRecap(month: string, recap: MonthRecap): Promise<void>
     method: 'POST',
     body: JSON.stringify({ month, recap }),
   })
+}
+
+// --- Passkeys (WebAuthn) ---------------------------------------------
+
+export interface PasskeyInfo {
+  id: string
+  label: string | null
+  created_at: string
+  last_used_at: string | null
+}
+
+/** Raw options objects from the server - shaped for navigator.credentials.{create,get}(). */
+export function getWebauthnRegisterOptions(): Promise<unknown> {
+  return request('webauthn-register-options.php', { method: 'POST' })
+}
+
+export async function verifyWebauthnRegistration(body: {
+  clientDataJSON: string
+  attestationObject: string
+  label: string
+}): Promise<void> {
+  await request('webauthn-register-verify.php', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function getWebauthnLoginOptions(): Promise<unknown> {
+  return request('webauthn-login-options.php', { method: 'POST' })
+}
+
+export async function verifyWebauthnLogin(body: {
+  id: string
+  clientDataJSON: string
+  authenticatorData: string
+  signature: string
+  userHandle: string
+}): Promise<void> {
+  await request('webauthn-login-verify.php', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function listPasskeys(): Promise<PasskeyInfo[]> {
+  const { passkeys } = await request<{ passkeys: PasskeyInfo[] }>(
+    'webauthn-credentials.php',
+  )
+  return passkeys
+}
+
+export async function deletePasskey(id: string): Promise<void> {
+  await request('webauthn-credentials.php', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'delete', id }),
+  })
+}
+
+export async function revokePassword(): Promise<void> {
+  await request('revoke-password.php', { method: 'POST' })
 }

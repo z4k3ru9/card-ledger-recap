@@ -15,6 +15,10 @@ dist-ssr
 # Backend config (real DB credentials - copy api/config.sample.php instead)
 api/config.php
 
+# Backend PHP dependencies (run `composer install` inside api/, or see
+# README - cPanel deployment needs this uploaded, not installed there)
+api/vendor
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

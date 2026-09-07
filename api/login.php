@@ -10,7 +10,10 @@ $body = clr_read_json_body();
 $password = (string) ($body['password'] ?? '');
 
 $row = $clrDb->query('SELECT password_hash FROM auth WHERE id = 1')->fetch();
-if (!$row || !password_verify($password, $row['password_hash'])) {
+if (!$row || $row['password_hash'] === null) {
+    clr_json_error(403, 'Password login is disabled - sign in with a passkey instead.');
+}
+if (!password_verify($password, $row['password_hash'])) {
     clr_json_error(401, 'Incorrect password.');
 }
 

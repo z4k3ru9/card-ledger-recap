@@ -15,6 +15,7 @@ import { AddBankControl } from '@/components/AddBankControl'
 import { BankCard } from '@/components/BankCard'
 import { CashCard } from '@/components/CashCard'
 import { LoginScreen } from '@/components/LoginScreen'
+import { PasskeyManager } from '@/components/PasskeyManager'
 import { ScrollToTopButton } from '@/components/ScrollToTopButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
@@ -23,6 +24,7 @@ import { buildRecapPdf, recapPdfFilename } from '@/lib/pdf'
 import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
 import { collectItemSuggestions, ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
 import { fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
+import type { AuthStatus } from '@/lib/api'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
 function currentMonthValue(): string {
@@ -30,20 +32,22 @@ function currentMonthValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-type AuthStatus = 'loading' | 'setup' | 'login' | 'ready'
+type AuthPhase = 'loading' | 'setup' | 'login' | 'ready'
 
 function App() {
-  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
+  const [authPhase, setAuthPhase] = useState<AuthPhase>('loading')
+  const [status, setStatus] = useState<AuthStatus | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const status = await getStatus()
+        const s = await getStatus()
         if (cancelled) return
-        setAuthStatus(status.needsSetup ? 'setup' : status.authenticated ? 'ready' : 'login')
+        setStatus(s)
+        setAuthPhase(s.needsSetup ? 'setup' : s.authenticated ? 'ready' : 'login')
       } catch {
-        if (!cancelled) setAuthStatus('login')
+        if (!cancelled) setAuthPhase('login')
       }
     })()
     return () => {
@@ -51,7 +55,7 @@ function App() {
     }
   }, [])
 
-  if (authStatus === 'loading') {
+  if (authPhase === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
@@ -60,26 +64,46 @@ function App() {
     )
   }
 
-  if (authStatus === 'setup' || authStatus === 'login') {
+  if (authPhase === 'setup' || authPhase === 'login') {
     return (
       <LoginScreen
-        mode={authStatus === 'setup' ? 'setup' : 'unlock'}
-        onSignedIn={() => setAuthStatus('ready')}
+        mode={authPhase === 'setup' ? 'setup' : 'unlock'}
+        passwordEnabled={status?.passwordEnabled ?? true}
+        passkeyCount={status?.passkeyCount ?? 0}
+        onSignedIn={() => setAuthPhase('ready')}
       />
     )
   }
 
   return (
     <RecapApp
-      onLock={() => {
-        void logout()
-        setAuthStatus('login')
+      initialPasswordEnabled={status?.passwordEnabled ?? true}
+      onLock={async () => {
+        await logout().catch(() => {})
+        // Re-fetch rather than trusting the stale status from initial
+        // load - a passkey may have been registered (or the password
+        // revoked) since then, and the login screen needs that to decide
+        // what to show.
+        try {
+          setStatus(await getStatus())
+        } catch {
+          // Keep the previous status if this fails; login.php/webauthn
+          // endpoints still enforce the real rules either way.
+        }
+        setAuthPhase('login')
       }}
     />
   )
 }
 
-function RecapApp({ onLock }: { onLock: () => void }) {
+function RecapApp({
+  initialPasswordEnabled,
+  onLock,
+}: {
+  initialPasswordEnabled: boolean
+  onLock: () => void
+}) {
+  const [passwordEnabled, setPasswordEnabled] = useState(initialPasswordEnabled)
   const [month, setMonth] = useState(currentMonthValue())
   // Every month gets its own recap automatically - switching the month
   // picker below loads that month's banks/cash (creating a blank one on
@@ -273,6 +297,10 @@ function RecapApp({ onLock }: { onLock: () => void }) {
                 <Share2 className="size-4" />
                 <span className="hidden sm:inline">Share PDF</span>
               </Button>
+              <PasskeyManager
+                passwordEnabled={passwordEnabled}
+                onPasswordRevoked={() => setPasswordEnabled(false)}
+              />
               <ThemeToggle />
               <Button
                 variant="outline"
