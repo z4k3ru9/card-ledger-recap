@@ -1,29 +1,29 @@
+// Theme follows the OS/browser light-dark preference directly - no manual
+// toggle, no stored override. index.html applies the initial class before
+// paint (to avoid a flash); watchSystemTheme() keeps it in sync if the OS
+// preference changes while the page stays open.
 export type Theme = 'light' | 'dark'
 
-const THEME_CHANGE_EVENT = 'clr-theme-change'
+const DARK_QUERY = '(prefers-color-scheme: dark)'
 
 export function getInitialTheme(): Theme {
-  if (typeof document === 'undefined') return 'light'
-  return document.documentElement.classList.contains('dark')
-    ? 'dark'
-    : 'light'
+  if (typeof window === 'undefined') return 'light'
+  return window.matchMedia(DARK_QUERY).matches ? 'dark' : 'light'
 }
 
-export function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('dark', theme === 'dark')
-  try {
-    localStorage.setItem('theme', theme)
-  } catch {
-    // localStorage unavailable - theme just won't persist across reloads.
+/**
+ * Keeps `<html class="dark">` in sync with the OS preference for as long
+ * as the page stays open, and notifies `callback` on each change. Returns
+ * an unsubscribe function.
+ */
+export function watchSystemTheme(callback: (theme: Theme) => void): () => void {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => {}
+  const mql = window.matchMedia(DARK_QUERY)
+  function handler(e: MediaQueryListEvent) {
+    const theme: Theme = e.matches ? 'dark' : 'light'
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    callback(theme)
   }
-  window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: theme }))
-}
-
-/** Notifies `callback` whenever applyTheme() runs elsewhere (e.g. ThemeToggle). */
-export function onThemeChange(callback: (theme: Theme) => void): () => void {
-  function handler(e: Event) {
-    callback((e as CustomEvent<Theme>).detail)
-  }
-  window.addEventListener(THEME_CHANGE_EVENT, handler)
-  return () => window.removeEventListener(THEME_CHANGE_EVENT, handler)
+  mql.addEventListener('change', handler)
+  return () => mql.removeEventListener('change', handler)
 }

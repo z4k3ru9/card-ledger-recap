@@ -6,18 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Credit Card Recap</title>
     <script>
-      // Applied before paint to avoid a light/dark flash on load.
+      // Applied before paint to avoid a light/dark flash on load. Always
+      // follows the OS/browser preference directly - no manual override.
       ;(function () {
-        try {
-          var stored = localStorage.getItem('theme')
-          var isDark =
-            stored === 'dark' ||
-            (stored !== 'light' &&
-              window.matchMedia('(prefers-color-scheme: dark)').matches)
-          document.documentElement.classList.toggle('dark', isDark)
-        } catch (e) {
-          // localStorage unavailable (e.g. private mode) - fall back to light.
-        }
+        var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        document.documentElement.classList.toggle('dark', isDark)
       })()
     </script>
   </head>

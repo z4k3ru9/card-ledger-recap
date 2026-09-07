@@ -17,7 +17,6 @@ import { CashCard } from '@/components/CashCard'
 import { LoginScreen } from '@/components/LoginScreen'
 import { PasskeyManager } from '@/components/PasskeyManager'
 import { ScrollToTopButton } from '@/components/ScrollToTopButton'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { buildRecapPdf, recapPdfFilename } from '@/lib/pdf'
@@ -301,7 +300,6 @@ function RecapApp({
                 passwordEnabled={passwordEnabled}
                 onPasswordRevoked={() => setPasswordEnabled(false)}
               />
-              <ThemeToggle />
               <Button
                 variant="outline"
                 size="icon"

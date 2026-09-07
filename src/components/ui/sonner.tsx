@@ -1,11 +1,13 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
-import { getInitialTheme, onThemeChange } from '@/lib/theme'
+import { getInitialTheme, watchSystemTheme } from '@/lib/theme'
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const [theme, setTheme] = useState(getInitialTheme)
 
-  useEffect(() => onThemeChange(setTheme), [])
+  // Also the one place that keeps <html class="dark"> itself in sync if
+  // the OS preference changes while the page is open - see watchSystemTheme().
+  useEffect(() => watchSystemTheme(setTheme), [])
 
   return (
     <Sonner
