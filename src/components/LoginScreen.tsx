@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CreditCard, Fingerprint, Loader2, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,7 +11,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError, login, setupPassword } from '@/lib/api'
-import { isPasskeySupported, loginWithPasskey, PasskeyError } from '@/lib/webauthn'
+import {
+  isPasskeySupported,
+  loginWithPasskey,
+  loginWithPasskeyConditional,
+  PasskeyError,
+} from '@/lib/webauthn'
 
 interface LoginScreenProps {
   /** "setup" the first time (no shared password yet), "unlock" every time after. */
@@ -35,10 +40,28 @@ export function LoginScreen({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [passkeyBusy, setPasskeyBusy] = useState(false)
-  // Password form starts collapsed behind "Use the password instead" when
-  // a passkey is available, so the passkey button (the faster path) is
-  // what people see first.
-  const [showPasswordForm, setShowPasswordForm] = useState(!canUsePasskey)
+
+  // Background "conditional UI" passkey request: on browsers that
+  // support it, this makes the registered passkey show up right inside
+  // the password field's own native autofill dropdown (see its
+  // `autocomplete` value below), next to any saved password - no button
+  // needed. Falls back to nothing if unsupported; the explicit passkey
+  // button and plain password autofill still work either way.
+  useEffect(() => {
+    if (!canUsePasskey) return
+    const controller = new AbortController()
+    loginWithPasskeyConditional(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) onSignedIn()
+        return result
+      })
+      .catch(() => {
+        // Aborted (unmount) or a failed verification of whatever was
+        // picked - either way, nothing else to do here.
+      })
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canUsePasskey])
 
   async function handlePasskeyLogin() {
     setError(null)
@@ -85,7 +108,7 @@ export function LoginScreen({
     }
   }
 
-  const showPasswordFields = mode === 'setup' || (passwordEnabled && showPasswordForm)
+  const showPasswordFields = mode === 'setup' || passwordEnabled
   const noWayIn = mode === 'unlock' && !canUsePasskey && !passwordEnabled
 
   return (
@@ -120,16 +143,6 @@ export function LoginScreen({
             </Button>
           )}
 
-          {canUsePasskey && passwordEnabled && !showPasswordForm && (
-            <button
-              type="button"
-              onClick={() => setShowPasswordForm(true)}
-              className="text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            >
-              Use the password instead
-            </button>
-          )}
-
           {showPasswordFields && (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
@@ -137,9 +150,15 @@ export function LoginScreen({
                 <Input
                   id="password"
                   type="password"
-                  autoFocus={!canUsePasskey}
+                  autoFocus
+                  // The "webauthn" token is what lets a supporting browser
+                  // offer a registered passkey right in this field's own
+                  // autofill dropdown, alongside any saved password - see
+                  // the conditional-UI effect above.
                   autoComplete={
-                    mode === 'setup' ? 'new-password' : 'current-password'
+                    mode === 'setup'
+                      ? 'new-password'
+                      : 'current-password webauthn'
                   }
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

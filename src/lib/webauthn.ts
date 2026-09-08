@@ -19,6 +19,26 @@ export function isPasskeySupported(): boolean {
   )
 }
 
+/**
+ * Whether this browser supports WebAuthn "conditional UI" - passkeys
+ * offered directly inside a form field's native autofill dropdown,
+ * alongside any saved password, rather than requiring a separate button.
+ */
+export async function isConditionalMediationSupported(): Promise<boolean> {
+  if (!isPasskeySupported()) return false
+  const isAvailable = (
+    window.PublicKeyCredential as unknown as {
+      isConditionalMediationAvailable?: () => Promise<boolean>
+    }
+  ).isConditionalMediationAvailable
+  if (typeof isAvailable !== 'function') return false
+  try {
+    return await isAvailable()
+  } catch {
+    return false
+  }
+}
+
 function base64UrlToBuffer(value: string): ArrayBuffer {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/')
   const padding = '='.repeat((4 - (padded.length % 4)) % 4)
@@ -111,6 +131,19 @@ export async function registerPasskey(label: string): Promise<void> {
   })
 }
 
+async function verifyAssertion(credential: PublicKeyCredential): Promise<void> {
+  const response = credential.response as AuthenticatorAssertionResponse
+  await verifyWebauthnLogin({
+    id: bufferToBase64Url(credential.rawId),
+    clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+    authenticatorData: bufferToBase64Url(response.authenticatorData),
+    signature: bufferToBase64Url(response.signature),
+    userHandle: response.userHandle
+      ? bufferToBase64Url(response.userHandle)
+      : '',
+  })
+}
+
 /** Signs in with an existing passkey - no password involved. */
 export async function loginWithPasskey(): Promise<void> {
   if (!isPasskeySupported()) {
@@ -131,14 +164,38 @@ export async function loginWithPasskey(): Promise<void> {
     throw new PasskeyError('Passkey sign-in failed.')
   }
 
-  const response = credential.response as AuthenticatorAssertionResponse
-  await verifyWebauthnLogin({
-    id: bufferToBase64Url(credential.rawId),
-    clientDataJSON: bufferToBase64Url(response.clientDataJSON),
-    authenticatorData: bufferToBase64Url(response.authenticatorData),
-    signature: bufferToBase64Url(response.signature),
-    userHandle: response.userHandle
-      ? bufferToBase64Url(response.userHandle)
-      : '',
-  })
+  await verifyAssertion(credential)
+}
+
+/**
+ * Starts a background "conditional UI" passkey request - if the browser
+ * supports it (see isConditionalMediationSupported) and a form field on
+ * the page has `autocomplete` including "webauthn", focusing that field
+ * shows the registered passkey(s) right in its native autofill dropdown,
+ * alongside any saved password. Resolves (signing the user in) only if
+ * they actually pick a passkey suggestion there; resolves to nothing if
+ * `signal` aborts (e.g. the component unmounted, or the field's own
+ * autofill picked a plain password instead) - never throws for that.
+ */
+export async function loginWithPasskeyConditional(
+  signal: AbortSignal,
+): Promise<void> {
+  const optionsJSON = (await getWebauthnLoginOptions()) as GetOptionsJSON
+  const options = toGetOptions(optionsJSON)
+
+  let credential: PublicKeyCredential | null
+  try {
+    credential = (await navigator.credentials.get({
+      ...options,
+      mediation: 'conditional',
+      signal,
+    } as CredentialRequestOptions)) as PublicKeyCredential | null
+  } catch {
+    // Aborted, or the browser/user dismissed it - nothing to do; the
+    // password field and the explicit passkey button are still there.
+    return
+  }
+  if (!credential) return
+
+  await verifyAssertion(credential)
 }
