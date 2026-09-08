@@ -103,6 +103,33 @@ function toGetOptions(json: GetOptionsJSON): CredentialRequestOptions {
 
 export class PasskeyError extends Error {}
 
+const DEVICE_FLAG_KEY = 'card-ledger-recap:passkey-worked-here'
+
+/**
+ * Whether a passkey has actually completed sign-in (or been registered)
+ * on this device/browser before - not security-sensitive, just a hint
+ * for whether it's worth auto-prompting the native passkey UI on page
+ * load. A brand-new device gets the gentler click-to-see-suggestion
+ * behavior instead (see loginWithPasskeyConditional), so it never sees
+ * an unprompted "no passkey found" dialog.
+ */
+export function hasPasskeyWorkedOnThisDevice(): boolean {
+  try {
+    return localStorage.getItem(DEVICE_FLAG_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markPasskeyWorkedOnThisDevice() {
+  try {
+    localStorage.setItem(DEVICE_FLAG_KEY, '1')
+  } catch {
+    // Storage unavailable - just means this device won't get the
+    // auto-prompt treatment next time either; harmless.
+  }
+}
+
 /** Registers a new passkey for this browser/device. Requires an existing authenticated session. */
 export async function registerPasskey(label: string): Promise<void> {
   if (!isPasskeySupported()) {
@@ -129,6 +156,7 @@ export async function registerPasskey(label: string): Promise<void> {
     attestationObject: bufferToBase64Url(response.attestationObject),
     label,
   })
+  markPasskeyWorkedOnThisDevice()
 }
 
 async function verifyAssertion(credential: PublicKeyCredential): Promise<void> {
@@ -142,10 +170,18 @@ async function verifyAssertion(credential: PublicKeyCredential): Promise<void> {
       ? bufferToBase64Url(response.userHandle)
       : '',
   })
+  markPasskeyWorkedOnThisDevice()
 }
 
-/** Signs in with an existing passkey - no password involved. */
-export async function loginWithPasskey(): Promise<void> {
+/**
+ * Signs in with an existing passkey - no password involved. Unlike the
+ * conditional variant, this immediately shows the browser/OS's own
+ * passkey prompt (Face ID, Touch ID, Windows Hello, a picker, ...)
+ * without needing the user to click into a field first - pass an
+ * AbortSignal to cancel cleanly if the caller no longer cares about the
+ * result (e.g. the component unmounted).
+ */
+export async function loginWithPasskey(signal?: AbortSignal): Promise<void> {
   if (!isPasskeySupported()) {
     throw new PasskeyError('This browser does not support passkeys.')
   }
@@ -155,10 +191,10 @@ export async function loginWithPasskey(): Promise<void> {
   let credential: PublicKeyCredential
   try {
     credential = (await navigator.credentials.get(
-      options,
+      signal ? { ...options, signal } : options,
     )) as PublicKeyCredential
   } catch (err) {
-    if (err instanceof Error && err.name === 'NotAllowedError') {
+    if (err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
       throw new PasskeyError('Passkey sign-in was cancelled.')
     }
     throw new PasskeyError('Passkey sign-in failed.')

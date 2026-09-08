@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError, login, setupPassword } from '@/lib/api'
 import {
+  hasPasskeyWorkedOnThisDevice,
   isPasskeySupported,
   loginWithPasskey,
   loginWithPasskeyConditional,
@@ -41,24 +42,44 @@ export function LoginScreen({
   const [busy, setBusy] = useState(false)
   const [passkeyBusy, setPasskeyBusy] = useState(false)
 
-  // Background "conditional UI" passkey request: on browsers that
-  // support it, this makes the registered passkey show up right inside
-  // the password field's own native autofill dropdown (see its
-  // `autocomplete` value below), next to any saved password - no button
-  // needed. Falls back to nothing if unsupported; the explicit passkey
-  // button and plain password autofill still work either way.
+  // On page load, try a passkey automatically - but how "loud" depends
+  // on whether this device has ever actually completed a passkey
+  // sign-in before (a plain localStorage flag, not security-sensitive):
+  //   - known-good device: fire the real native prompt right away (Face
+  //     ID / Touch ID / Windows Hello / a picker) with no click needed -
+  //     this device has a real reason to expect one to be there.
+  //   - unknown/new device: stay quiet and only offer the passkey as a
+  //     suggestion in the password field's own autofill dropdown (see
+  //     its `autocomplete` value below) once the user clicks into it -
+  //     an unprompted "no passkey found" dialog on a device that's never
+  //     used one here would just be annoying.
+  // Either way, the explicit button and plain password entry still work.
   useEffect(() => {
     if (!canUsePasskey) return
     const controller = new AbortController()
-    loginWithPasskeyConditional(controller.signal)
-      .then((result) => {
+    const autoPrompt = hasPasskeyWorkedOnThisDevice()
+
+    if (autoPrompt) setPasskeyBusy(true)
+    ;(autoPrompt
+      ? loginWithPasskey(controller.signal)
+      : loginWithPasskeyConditional(controller.signal)
+    )
+      .then(() => {
         if (!controller.signal.aborted) onSignedIn()
-        return result
       })
-      .catch(() => {
-        // Aborted (unmount) or a failed verification of whatever was
-        // picked - either way, nothing else to do here.
+      .catch((err) => {
+        if (controller.signal.aborted) return
+        // Only the loud, known-good-device path has anything worth
+        // surfacing - a declined/failed background suggestion on an
+        // unknown device should just stay silent (the button is right there).
+        if (autoPrompt && err instanceof PasskeyError) {
+          setError(err.message)
+        }
       })
+      .finally(() => {
+        if (!controller.signal.aborted) setPasskeyBusy(false)
+      })
+
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canUsePasskey])
