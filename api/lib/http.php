@@ -2,6 +2,11 @@
 // Small JSON in/out helpers shared by every endpoint.
 
 header('Content-Type: application/json; charset=utf-8');
+// Every endpoint here is either auth-sensitive or session-sensitive
+// (status.php in particular must never serve a stale cached answer to
+// "am I logged in / is there a passkey") - never let a browser or
+// intermediary cache a response.
+header('Cache-Control: no-store');
 
 // No `: never` return type here (PHP 8.1+ only, and both of these still
 // exit either way) - keeps this compatible with PHP 8.0, which is a more
