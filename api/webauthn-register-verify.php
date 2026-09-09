@@ -8,6 +8,7 @@ require __DIR__ . '/lib/webauthn.php';
 
 clr_require_method('POST');
 clr_require_auth();
+clr_require_webauthn_origin();
 
 $body = clr_read_json_body();
 $clientDataJSON = clr_base64url_decode((string) ($body['clientDataJSON'] ?? ''));

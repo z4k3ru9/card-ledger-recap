@@ -6,8 +6,11 @@
 // site (a discoverable/resident credential), so there's no username step.
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/lib/webauthn.php';
+require __DIR__ . '/lib/rate_limit.php';
 
 clr_require_method('POST');
+clr_require_webauthn_origin();
+clr_rate_limit_consume($clrDb, 'passkey_options', 20, 300);
 
 if (clr_passkey_count($clrDb) === 0) {
     clr_json_error(404, 'No passkeys are registered yet.');

@@ -2,13 +2,12 @@
 // Single shared PDO connection, built from config.php (gitignored - see
 // config.sample.php for the template).
 
-function clr_db(): PDO
+function clr_config(): array
 {
-    static $pdo = null;
-    if ($pdo !== null) {
-        return $pdo;
+    static $config = null;
+    if ($config !== null) {
+        return $config;
     }
-
     $configFile = __DIR__ . '/../config.php';
     if (!is_file($configFile)) {
         clr_json_error(
@@ -19,6 +18,20 @@ function clr_db(): PDO
     }
 
     $config = require $configFile;
+    if (!is_array($config)) {
+        clr_json_error(500, 'api/config.php must return a configuration array.');
+    }
+    return $config;
+}
+
+function clr_db(): PDO
+{
+    static $pdo = null;
+    if ($pdo !== null) {
+        return $pdo;
+    }
+
+    $config = clr_config();
     $dsn = sprintf(
         'mysql:host=%s;dbname=%s;charset=utf8mb4',
         $config['db_host'],

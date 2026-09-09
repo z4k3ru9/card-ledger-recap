@@ -24,6 +24,7 @@ interface LoginScreenProps {
   mode: 'setup' | 'unlock'
   passwordEnabled: boolean
   passkeyCount: number
+  notice?: string
   onSignedIn: () => void
 }
 
@@ -31,6 +32,7 @@ export function LoginScreen({
   mode,
   passwordEnabled,
   passkeyCount,
+  notice,
   onSignedIn,
 }: LoginScreenProps) {
   const canUsePasskey =
@@ -38,6 +40,7 @@ export function LoginScreen({
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [setupSecret, setSetupSecret] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [passkeyBusy, setPasskeyBusy] = useState(false)
@@ -117,7 +120,7 @@ export function LoginScreen({
     setBusy(true)
     try {
       if (mode === 'setup') {
-        await setupPassword(password)
+        await setupPassword(password, setupSecret)
       } else {
         await login(password)
       }
@@ -153,6 +156,11 @@ export function LoginScreen({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {notice && (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              {notice}
+            </p>
+          )}
           {canUsePasskey && (
             <Button onClick={handlePasskeyLogin} disabled={passkeyBusy}>
               {passkeyBusy ? (
@@ -186,18 +194,36 @@ export function LoginScreen({
                 />
               </div>
               {mode === 'setup' && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="confirm-password">Confirm password</Label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                </div>
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="confirm-password">Confirm password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="setup-secret">One-time setup secret</Label>
+                    <Input
+                      id="setup-secret"
+                      type="password"
+                      autoComplete="off"
+                      value={setupSecret}
+                      onChange={(e) => setSetupSecret(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use the secret configured by the server administrator.
+                    </p>
+                  </div>
+                </>
               )}
-              <Button type="submit" disabled={busy || !password}>
+              <Button
+                type="submit"
+                disabled={busy || !password || (mode === 'setup' && !setupSecret)}
+              >
                 {busy ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (

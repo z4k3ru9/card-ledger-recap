@@ -40,7 +40,6 @@ export function PasskeyManager({
 
   useEffect(() => {
     if (!open) return
-    setError(null)
     listPasskeys()
       .then(setPasskeys)
       .catch(() => setError('Could not load registered passkeys.'))
@@ -66,6 +65,11 @@ export function PasskeyManager({
   }
 
   async function handleDelete(id: string) {
+    const passkey = passkeys?.find((candidate) => candidate.id === id)
+    const confirmed = window.confirm(
+      `Remove the passkey${passkey?.label ? ` “${passkey.label}”` : ''}? You will no longer be able to sign in with it.`,
+    )
+    if (!confirmed) return
     setError(null)
     try {
       await deletePasskey(id)
@@ -99,7 +103,13 @@ export function PasskeyManager({
   const hasPasskeys = (passkeys?.length ?? 0) > 0
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (nextOpen) setError(null)
+      }}
+    >
       <DialogTrigger
         render={
           <Button

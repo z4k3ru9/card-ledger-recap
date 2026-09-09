@@ -10,4 +10,15 @@ return [
     'db_name' => 'cpaneluser_cardledger',
     'db_user' => 'cpaneluser_cardledger',
     'db_pass' => 'change-me',
+
+    // Required once, when the very first password is created. Generate a
+    // long random value, keep it outside version control, and remove or
+    // rotate it after setup. This prevents a newly deployed public site
+    // from being claimed by its first visitor.
+    'setup_secret' => 'replace-with-a-long-random-secret',
+
+    // Immutable WebAuthn identity. The RP ID is the hostname only; the
+    // allowed origin includes scheme and optional non-default port.
+    'webauthn_rp_id' => 'recap.example.com',
+    'webauthn_allowed_origin' => 'https://recap.example.com',
 ];

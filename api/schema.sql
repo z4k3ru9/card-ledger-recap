@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS recaps (
   month CHAR(7) NOT NULL PRIMARY KEY,
   data LONGTEXT NOT NULL,
+  revision INT UNSIGNED NOT NULL DEFAULT 1,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -52,8 +53,19 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
   last_used_at TIMESTAMP NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS auth_rate_limits (
+  scope VARCHAR(40) NOT NULL,
+  key_hash CHAR(64) NOT NULL,
+  attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  window_started TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_attempt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (scope, key_hash),
+  INDEX auth_rate_limits_last_attempt (last_attempt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Upgrades a database created before passkeys existed. password_hash was
 -- originally NOT NULL; it has to become nullable so the password can be
 -- revoked once at least one passkey is registered.
 ALTER TABLE auth MODIFY COLUMN password_hash VARCHAR(255) NULL;
 ALTER TABLE auth ADD COLUMN IF NOT EXISTS webauthn_user_id VARBINARY(32) NULL;
+ALTER TABLE recaps ADD COLUMN IF NOT EXISTS revision INT UNSIGNED NOT NULL DEFAULT 1;

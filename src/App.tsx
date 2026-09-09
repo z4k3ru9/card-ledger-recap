@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, LogOut, CreditCard, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,11 +19,11 @@ import { PasskeyManager } from '@/components/PasskeyManager'
 import { ScrollToTopButton } from '@/components/ScrollToTopButton'
 import { formatCurrency, formatMonthLabel } from '@/lib/format'
 import { paletteFor, CASH_PALETTE } from '@/lib/palette'
-import { buildRecapPdf, recapPdfFilename } from '@/lib/pdf'
-import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
+import { createEmptyRecap, createTransactionRow, isRowEmpty } from '@/lib/rows'
 import { collectItemSuggestions, ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
-import { fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
+import { ApiError, fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
 import type { AuthStatus } from '@/lib/api'
+import { RecapSaveQueue, type SaveState } from '@/lib/recapSaveQueue'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
 function currentMonthValue(): string {
@@ -31,24 +31,34 @@ function currentMonthValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-type AuthPhase = 'loading' | 'setup' | 'login' | 'ready'
+type AuthPhase = 'loading' | 'setup' | 'login' | 'ready' | 'unavailable'
 
 function App() {
   const [authPhase, setAuthPhase] = useState<AuthPhase>('loading')
   const [status, setStatus] = useState<AuthStatus | null>(null)
 
+  async function refreshStatus() {
+    setAuthPhase('loading')
+    try {
+      const s = await getStatus()
+      setStatus(s)
+      setAuthPhase(s.needsSetup ? 'setup' : s.authenticated ? 'ready' : 'login')
+    } catch {
+      setAuthPhase('unavailable')
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        const s = await getStatus()
+    void getStatus()
+      .then((s) => {
         if (cancelled) return
         setStatus(s)
         setAuthPhase(s.needsSetup ? 'setup' : s.authenticated ? 'ready' : 'login')
-      } catch {
-        if (!cancelled) setAuthPhase('login')
-      }
-    })()
+      })
+      .catch(() => {
+        if (!cancelled) setAuthPhase('unavailable')
+      })
     return () => {
       cancelled = true
     }
@@ -59,6 +69,19 @@ function App() {
       <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
         Loading...
+      </div>
+    )
+  }
+
+  if (authPhase === 'unavailable') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="text-sm text-destructive">
+          The server or database is unavailable. No data can be loaded safely.
+        </p>
+        <Button variant="outline" onClick={() => void refreshStatus()}>
+          Retry connection
+        </Button>
       </div>
     )
   }
@@ -77,6 +100,7 @@ function App() {
   return (
     <RecapApp
       initialPasswordEnabled={status?.passwordEnabled ?? true}
+      initialPasskeyCount={status?.passkeyCount ?? 0}
       onLock={async () => {
         await logout().catch(() => {})
         // Re-fetch rather than trusting the stale status from initial
@@ -97,9 +121,11 @@ function App() {
 
 function RecapApp({
   initialPasswordEnabled,
+  initialPasskeyCount,
   onLock,
 }: {
   initialPasswordEnabled: boolean
+  initialPasskeyCount: number
   onLock: () => void
 }) {
   const [passwordEnabled, setPasswordEnabled] = useState(initialPasswordEnabled)
@@ -111,7 +137,12 @@ function RecapApp({
   // are then saved back one month at a time (see the debounced effect
   // below), not as one giant blob.
   const [recaps, setRecaps] = useState<RecapsByMonth>({})
-  const [loaded, setLoaded] = useState(false)
+  const [loadPhase, setLoadPhase] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [sessionExpired, setSessionExpired] = useState(false)
+  const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({})
+  const [exporting, setExporting] = useState(false)
+  const saveQueue = useRef<RecapSaveQueue | null>(null)
+  const recapsRef = useRef<RecapsByMonth>({})
   // Briefly shown while switching months, purely for visual feedback -
   // the target month's data is already in memory, but a beat of spinner
   // followed by the layout sliding in reads better than an instant,
@@ -121,41 +152,40 @@ function RecapApp({
   // view instead of leaving the user to scroll down and find it.
   const [justAddedBankId, setJustAddedBankId] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const stored = await fetchRecaps().catch(() => ({}) as RecapsByMonth)
-      if (!cancelled) {
-        setRecaps(stored)
-        setLoaded(true)
+  async function loadRecaps() {
+    setLoadPhase('loading')
+    try {
+      const stored = await fetchRecaps()
+      saveQueue.current?.dispose()
+      saveQueue.current = new RecapSaveQueue(saveRecap, stored.revisions, {
+        onState: (changedMonth, state) =>
+          setSaveStates((previous) => ({ ...previous, [changedMonth]: state })),
+        onUnauthorized: () => setSessionExpired(true),
+        onConflict: (changedMonth) =>
+          toast.error(`${formatMonthLabel(changedMonth)} changed in another session. Reload the server copy to continue.`, {
+            id: `conflict-${changedMonth}`,
+            duration: Infinity,
+          }),
+      })
+      recapsRef.current = stored.recaps
+      setRecaps(stored.recaps)
+      setSaveStates({})
+      setLoadPhase('ready')
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setSessionExpired(true)
+      } else {
+        setLoadPhase('error')
       }
-    })()
-    return () => {
-      cancelled = true
     }
-  }, [])
+  }
 
-  // Debounced autosave of just the current month, so fast typing doesn't
-  // fire a request per keystroke.
   useEffect(() => {
-    if (!loaded) return
-    const current = recaps[month]
-    if (!current) return
-    const timeout = setTimeout(() => {
-      saveRecap(month, current)
-        .then(() => {
-          toast.success('Recap saved', { id: 'autosave' })
-        })
-        .catch(() => {
-          // A transient failure just means this edit isn't saved yet -
-          // the next change (or a page reload) will retry.
-          toast.error('Failed to save - check your connection and try again', {
-            id: 'autosave',
-          })
-        })
-    }, 600)
-    return () => clearTimeout(timeout)
-  }, [recaps, month, loaded])
+    void loadRecaps()
+    return () => saveQueue.current?.dispose()
+    // The initial load owns the queue lifetime; retries call loadRecaps explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const recap: MonthRecap = recaps[month] ?? createEmptyRecap()
   const { banks, cashRows } = recap
@@ -177,18 +207,19 @@ function RecapApp({
   const grandTotal = bankTotal + cashNet
 
   function updateRecap(updater: (recap: MonthRecap) => MonthRecap) {
-    setRecaps((prev) => ({
-      ...prev,
-      [month]: updater(prev[month] ?? createEmptyRecap()),
-    }))
+    const next = updater(recapsRef.current[month] ?? createEmptyRecap())
+    recapsRef.current = { ...recapsRef.current, [month]: next }
+    setRecaps(recapsRef.current)
+    saveQueue.current?.enqueue(month, next)
   }
 
   function handleMonthChange(nextMonth: string) {
     setMonthTransitioning(true)
     setMonth(nextMonth)
-    setRecaps((prev) =>
-      prev[nextMonth] ? prev : { ...prev, [nextMonth]: createEmptyRecap() },
-    )
+    if (!recapsRef.current[nextMonth]) {
+      recapsRef.current = { ...recapsRef.current, [nextMonth]: createEmptyRecap() }
+      setRecaps(recapsRef.current)
+    }
     window.setTimeout(() => setMonthTransitioning(false), 300)
   }
 
@@ -217,6 +248,13 @@ function RecapApp({
   }
 
   function removeBank(id: string) {
+    const bank = banks.find((candidate) => candidate.id === id)
+    if (bank?.transactions.some((row) => !isRowEmpty(row))) {
+      const confirmed = window.confirm(
+        `Remove ${bank.bankName} and all of its entered transactions?`,
+      )
+      if (!confirmed) return
+    }
     updateRecap((r) => ({ ...r, banks: r.banks.filter((b) => b.id !== id) }))
   }
 
@@ -225,40 +263,75 @@ function RecapApp({
   }
 
   async function handleExport() {
-    const doc = buildRecapPdf({ month, banks, cashRows })
-    const filename = recapPdfFilename(month)
-    const blob = doc.output('blob')
-    const file = new File([blob], filename, { type: 'application/pdf' })
+    setExporting(true)
+    try {
+      const { buildRecapPdf, recapPdfFilename } = await import('@/lib/pdf')
+      const doc = buildRecapPdf({ month, banks, cashRows })
+      const filename = recapPdfFilename(month)
+      const blob = doc.output('blob')
+      const file = new File([blob], filename, { type: 'application/pdf' })
 
     const canShareFile =
       typeof navigator.share === 'function' &&
       typeof navigator.canShare === 'function' &&
       navigator.canShare({ files: [file] })
 
-    if (canShareFile) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: filename,
-          text: `Rekap ${formatMonthLabel(month)}`,
-        })
-        return
-      } catch (err) {
-        // The user cancelling the share sheet isn't an error - just do
-        // nothing. Anything else (no share target available, etc.)
-        // falls through to a plain download instead.
-        if (err instanceof Error && err.name === 'AbortError') return
+      if (canShareFile) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: filename,
+            text: `Rekap ${formatMonthLabel(month)}`,
+          })
+          return
+        } catch (err) {
+          // Cancellation is expected; other failures fall through to download.
+          if (err instanceof Error && err.name === 'AbortError') return
+        }
       }
-    }
 
-    doc.save(filename)
+      doc.save(filename)
+    } catch {
+      toast.error('Could not create the PDF export.')
+    } finally {
+      setExporting(false)
+    }
   }
 
-  if (!loaded) {
+  if (sessionExpired) {
+    return (
+      <LoginScreen
+        mode="unlock"
+        passwordEnabled={passwordEnabled}
+        passkeyCount={initialPasskeyCount}
+        notice="Your session expired. Your unsaved edits are still in this browser; sign in to retry saving them."
+        onSignedIn={() => {
+          setSessionExpired(false)
+          if (saveQueue.current) saveQueue.current.resume()
+          else void loadRecaps()
+        }}
+      />
+    )
+  }
+
+  if (loadPhase === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
         Loading recaps...
+      </div>
+    )
+  }
+
+  if (loadPhase === 'error') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="text-sm text-destructive">
+          Recaps could not be loaded. Editing is disabled so existing server data cannot be overwritten.
+        </p>
+        <Button variant="outline" onClick={() => void loadRecaps()}>
+          Retry loading
+        </Button>
       </div>
     )
   }
@@ -292,8 +365,8 @@ function RecapApp({
                 value={month}
                 onChange={(e) => handleMonthChange(e.target.value)}
               />
-              <Button onClick={handleExport}>
-                <Share2 className="size-4" />
+              <Button onClick={() => void handleExport()} disabled={exporting}>
+                {exporting ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}
                 <span className="hidden sm:inline">Share PDF</span>
               </Button>
               <PasskeyManager
@@ -310,6 +383,25 @@ function RecapApp({
                 <LogOut className="size-4" />
               </Button>
             </div>
+            <p className="text-right text-xs text-muted-foreground" role="status">
+              {saveStates[month] === 'saving' && 'Saving...'}
+              {saveStates[month] === 'saved' && 'Saved'}
+              {saveStates[month] === 'unsaved' && 'Unsaved changes'}
+              {saveStates[month] === 'offline' && 'Offline - changes kept in this browser'}
+              {saveStates[month] === 'conflict' && (
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-xs text-destructive"
+                  onClick={() => {
+                    if (window.confirm('Discard local changes and reload the latest server copy?')) {
+                      void loadRecaps()
+                    }
+                  }}
+                >
+                  Conflict - reload server copy
+                </Button>
+              )}
+            </p>
           </div>
         </div>
       </header>

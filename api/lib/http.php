@@ -14,20 +14,35 @@ header('Cache-Control: no-store');
 function clr_json($data, int $status = 200)
 {
     http_response_code($status);
-    echo json_encode($data);
+    echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-function clr_json_error(int $status, string $message)
+function clr_json_error(int $status, string $message, ?string $code = null)
 {
-    clr_json(['error' => $message], $status);
+    $body = ['error' => $message];
+    if ($code !== null) {
+        $body['code'] = $code;
+    }
+    clr_json($body, $status);
 }
 
 /** Decodes the JSON request body, or fails the request with a 400. */
-function clr_read_json_body(): array
+function clr_read_json_body(int $maxBytes = 262144, int $maxDepth = 16): array
 {
+    $declaredLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($declaredLength > $maxBytes) {
+        clr_json_error(413, 'Request body is too large.', 'payload_too_large');
+    }
     $raw = file_get_contents('php://input');
-    $body = $raw === '' ? [] : json_decode($raw, true);
+    if ($raw === false || strlen($raw) > $maxBytes) {
+        clr_json_error(413, 'Request body is too large.', 'payload_too_large');
+    }
+    try {
+        $body = $raw === '' ? [] : json_decode($raw, true, $maxDepth, JSON_THROW_ON_ERROR);
+    } catch (JsonException $e) {
+        clr_json_error(400, 'Expected a valid JSON request body.', 'invalid_json');
+    }
     if (!is_array($body)) {
         clr_json_error(400, 'Expected a JSON request body.');
     }

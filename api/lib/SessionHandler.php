@@ -76,9 +76,19 @@ function clr_start_session(PDO $db): void
 
     session_set_save_handler(new ClrSessionHandler($db), true);
     session_name('clr_session');
+    // Scope the cookie to the directory containing the deployed app. Using
+    // `/` would leak a session cookie to unrelated applications on the same
+    // host and is incorrect when this app is hosted below the domain root.
+    $scriptName = (string) ($_SERVER['SCRIPT_NAME'] ?? '/api/bootstrap.php');
+    $cookiePath = dirname(dirname($scriptName));
+    if ($cookiePath === DIRECTORY_SEPARATOR || $cookiePath === '.') {
+        $cookiePath = '/';
+    } else {
+        $cookiePath = rtrim(str_replace('\\', '/', $cookiePath), '/') . '/';
+    }
     session_set_cookie_params([
         'lifetime' => 0,
-        'path' => '/',
+        'path' => $cookiePath,
         'secure' => $isHttps,
         'httponly' => true,
         'samesite' => 'Lax',
