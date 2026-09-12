@@ -10,7 +10,7 @@ Read these documents before editing:
 6. `docs/packtally/specs/SHARED-CONTRACTS.md` — identifiers, money, errors, idempotency, pagination, authorization, and capabilities.
 7. The matching `docs/packtally/specs/0N-*.md` stage contract — exact persistence, module interfaces, behavior, failure modes, and simulations.
 8. `CONTEXT.md` and `docs/adr/` — canonical domain language and hard-to-reverse decisions.
-9. `docs/superpowers/plans/2026-09-11-packtally-foundation.md` — first executable task plan.
+9. `docs/superpowers/plans/2026-09-12-thermo-nuclear-foundation.md` — legacy hardening and cutover guardrail plan.
 
 ## Non-negotiable rules
 
@@ -28,10 +28,26 @@ Read these documents before editing:
 
 ## Repository starting point
 
-- Public GitHub baseline: `main` at `69dd40c`.
-- Local-only repair branch: `codex/repair-audit-findings` at `c3a13bc`; it is not on GitHub and must not be blindly merged.
+- Public GitHub `main` is synchronized through `489d925` (`Validate recap API response boundaries`).
+- The working tree is clean. Do not recreate or replay the prior repair branch history.
 - Frontend: React 19 + TypeScript + Vite 8 + Tailwind/shadcn under `src/`.
 - Backend: framework-free PHP + MySQL under `api/`; current schema is a shared-login monthly JSON recap model, unsuitable for PackTally.
+
+## Completed hardening already on main
+
+- Save retries are bounded/classified, stale recap loads are cancellable, and idempotent mutations are serialized and replay-safe.
+- Persisted legacy amounts use validated integer minor units; API responses are runtime-validated before entering application state.
+- WebAuthn errors are generic/request-ID-backed, passkey verification is rate-limited, and forwarded-proxy trust is explicit.
+- Cutover guardrails include `schema_migrations`, `legacy_recaps`, `legacy_read_only`, health assertions, and the PackTally route inventory check.
+- Node.js is pinned to 22 via `.node-version` and `package.json` engines.
+
+The latest verification is 16 Vitest tests, lint, production build, PHP validation/syntax checks, and the PackTally contract inventory check. The build must run on Node 22.12+.
+
+## Next Claude to-do
+
+1. Implement the forward-only migration runner from the Stage 0 plan (`api/migrate.php` and migration files), then add migration checksum and rerun simulations.
+2. Add the legacy cutover copy/verification command that populates `legacy_recaps` and proves row-count/checksum parity before enabling `legacy_read_only`.
+3. Keep the current UI unchanged until the flow/schema work is complete; do not start the normalized trip/expense UI before the API boundary and migration evidence exist.
 
 ## Execution protocol
 
