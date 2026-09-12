@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { Loader2, LogOut, CreditCard, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,9 +21,10 @@ import { paletteFor, CASH_PALETTE } from '@/lib/palette'
 import { buildRecapPdf, recapPdfFilename } from '@/lib/pdf'
 import { createEmptyRecap, createTransactionRow } from '@/lib/rows'
 import { collectItemSuggestions, ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSuggestions'
-import { fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
+import { fetchRecaps, getStatus, logout } from '@/lib/api'
 import type { AuthStatus } from '@/lib/api'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
+import { useRecapAutosave } from '@/lib/useRecapAutosave'
 
 function currentMonthValue(): string {
   const now = new Date()
@@ -135,30 +135,13 @@ function RecapApp({
     }
   }, [])
 
-  // Debounced autosave of just the current month, so fast typing doesn't
-  // fire a request per keystroke.
-  useEffect(() => {
-    if (!loaded) return
-    const current = recaps[month]
-    if (!current) return
-    const timeout = setTimeout(() => {
-      saveRecap(month, current)
-        .then(() => {
-          toast.success('Recap saved', { id: 'autosave' })
-        })
-        .catch(() => {
-          // A transient failure just means this edit isn't saved yet -
-          // the next change (or a page reload) will retry.
-          toast.error('Failed to save - check your connection and try again', {
-            id: 'autosave',
-          })
-        })
-    }, 600)
-    return () => clearTimeout(timeout)
-  }, [recaps, month, loaded])
-
   const recap: MonthRecap = recaps[month] ?? createEmptyRecap()
   const { banks, cashRows } = recap
+  const { flush: flushAutosave } = useRecapAutosave(
+    month,
+    recaps[month],
+    loaded,
+  )
 
   // Every distinct "Item" ever entered (any bank, any month already
   // loaded), most-used first - backs the datalist every description
@@ -184,8 +167,7 @@ function RecapApp({
   }
 
   function handleMonthChange(nextMonth: string) {
-    const currentRecap = recaps[month]
-    if (currentRecap) void saveRecap(month, currentRecap)
+    flushAutosave()
     setMonthTransitioning(true)
     setMonth(nextMonth)
     setRecaps((prev) =>

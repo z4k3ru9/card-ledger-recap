@@ -129,4 +129,9 @@
   html {
     @apply font-sans;
     }
+  input[type="date"] {
+    color: var(--foreground);
+    opacity: 1;
+    color-scheme: light;
+  }
 }
