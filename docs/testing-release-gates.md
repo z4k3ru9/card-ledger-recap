@@ -1,23 +1,23 @@
-# PackTally Testing and Release Gates
+# Release gates
 
-## Focused checks
+Run these checks from the repository root before merging or deploying:
 
-Every change runs its focused unit/component/PHP tests plus lint/build. UI work includes 320 px and 430 px evidence. API changes validate against `docs/packtally/openapi.yaml` and standard error/idempotency behavior.
+```text
+npm run check:packtally-contract
+npm test
+npm run lint
+npm run build
+npm run test:php
+```
 
-## Required structural simulations
+The contract check is a cutover guardrail. It compares every path in `docs/packtally/openapi.yaml` with `docs/packtally/route-inventory.json`. Routes marked `design-only` are intentionally not shipped; they must not be presented as available behavior. A route can move to `implemented` only when its handler, persistence, authorization, idempotency behavior, and integration tests are present.
 
-Run when schema, permissions, money/rates, offline sync, authentication, or service-worker behavior changes:
+The current tests simulate the high-risk legacy flows:
 
-- Fresh install and idempotent migration rerun.
-- Legacy cutover count/checksum verification.
-- Owner/contributor authorization denial and reason/audit behavior.
-- Currency exponent, nearest-prior rate, reconciliation, and zero-IDR settlement.
-- Offline close/reopen/reconnect, duplicate replay, same-Expense conflict, tombstone, and service-worker upgrade.
-- Passkey onboarding, session revocation, and CLI-only recovery.
-- 10 members/10,000 Expenses: list p95 under two seconds and private PDF within five minutes/256 MB.
-- Receipt limits/authorization/metadata stripping and OCR/provider outage fallback.
-- Off-host encrypted backup and isolated restore.
+- bounded retry and permanent save failure;
+- disposal and stale request generations;
+- rapid month switching without stale replacement;
+- integer money validation and overflow boundaries;
+- idempotent mutation replay and revision conflicts at the API boundary.
 
-## Release gate
-
-Block release for unresolved P0/P1 audit issues, unhealthy schema/config, missing backup restore evidence, failed applicable simulation, inaccessible mobile primary flow, financial precision defect, hidden save/error state, or unreviewed migration. Automated test expansion is optional for narrow changes, but simulations above are never optional when applicable.
+The following remain release gates for the future normalized PackTally implementation: migration/rollback, multi-session permission checks, WebAuthn browser flows, offline replay, receipt processing, PDF pagination, backup restore, and mobile accessibility at narrow viewports.

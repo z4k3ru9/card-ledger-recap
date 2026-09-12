@@ -1,4 +1,10 @@
-# PackTally Audit — 2026-09-11
+# PackTally Audit — 2026-09-12
+
+## Current cutover status
+
+The PackTally OpenAPI file is a prelaunch design contract, not a claim that those routes are live. The current deployable API is the legacy PHP surface (`login.php`, `recaps.php`, WebAuthn endpoints, and health/status endpoints). Every PackTally contract route is currently marked `design-only` in [`route-inventory.json`](route-inventory.json). The contract check must pass before release so a newly added route cannot silently disappear from the implementation inventory.
+
+The legacy recap model remains isolated and must not be treated as the normalized trip/expense model. A route may be changed to `implemented` only after its authenticated handler, persistence, authorization, idempotency behavior, and integration tests exist.
 
 ## Scope and identity
 

@@ -10,6 +10,7 @@
     "lint": "oxlint --deny-warnings",
     "test": "vitest run",
     "test:php": "php tests/recap_validation.php",
+    "check:packtally-contract": "node scripts/check-packtally-contract.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
