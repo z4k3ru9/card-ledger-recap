@@ -1,148 +1,54 @@
 # Card Ledger Recap
 
-A monthly credit card usage recap tool. Manually enter each bank's
-statement items and any cash deposits/debits, and export a clean PDF
-recap for the month.
+A small monthly worksheet for recording credit-card statement items, optional cash movements, and exporting a PDF recap.
 
-## Features
+## What it does
 
-- Add one or more banks via a dropdown (with a custom "Other" option)
-- Enter statement items per bank, each with a date, description, and
-  amount — banks are subtotaled automatically; a new blank row is added
-  automatically once you fill in the last one
-- Track cash deposits and debits separately, with a running net cash
-  figure
-- Each month keeps its own recap automatically, stored centrally in a
-  shared MySQL database as you go — see [Architecture](#architecture)
-  below
-- Password-protected with a conventional server-side login (PHP session,
-  bcrypt-hashed password) — see [Security model](#security-model) below
-- Optional passkey (WebAuthn/FIDO2) login — register a passkey once
-  signed in, then sign in with it instead of typing the password; the
-  password can be revoked afterward so passkeys are the only way in —
-  see [Passkeys](#passkeys-passwordless-login) below
-- Export the full recap (per-bank tables, cash table, and summary) to
-  a PDF in Bahasa Indonesia, for any selected month
+- Track statement lines by bank: date, description, and amount.
+- Track optional cash deposits and debits.
+- Keep each month separate with automatic saving.
+- Export the selected month as a PDF in Bahasa Indonesia.
+- Share one protected recap workspace across the people who use it.
 
-## Tech stack
+## Stack
 
-- [React](https://react.dev/) + [Vite](https://vite.dev/) (frontend, fully static)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [jsPDF](https://github.com/parallax/jsPDF) + [jspdf-autotable](https://github.com/simonbengtsson/jsPDF-AutoTable)
-- PHP + MySQL (backend API under `api/` — see below)
-- [lbuchs/webauthn](https://github.com/lbuchs/webauthn) (PHP WebAuthn/FIDO2
-  server library, zero dependencies of its own — powers passkey login)
+- React + Vite + TypeScript
+- shadcn/ui with Base UI
+- PHP + MySQL API
+- jsPDF for PDF export
 
-## Architecture
+## Local setup
 
-This app has two parts, both plain enough to run on ordinary shared
-hosting (no Node.js needed in production):
+Requirements: Node.js, PHP 8+, Composer, and MySQL.
 
-- **Frontend** (`src/`): a static React app, built with `npm run build`
-  into `dist/`. It never talks to MySQL directly — it calls the PHP API.
-- **Backend** (`api/`): a handful of small PHP scripts, no framework
-  (one Composer dependency for passkeys - see [Backend
-  setup](#backend-setup)), behind a single shared MySQL database
-  (`api/schema.sql`):
-  - `auth` — one row holding the shared app password's bcrypt hash
-    (nullable - see [Passkeys](#passkeys-passwordless-login)) and the
-    WebAuthn "user handle" shared by every registered passkey.
-  - `sessions` — login sessions. The login cookie is a normal PHP
-    session, but its data is stored in this table (see
-    `api/lib/SessionHandler.php`) instead of the server's local
-    filesystem, so it survives however cPanel/shared hosting happens to
-    run PHP.
-  - `recaps` — one row per month (`"YYYY-MM"`), holding that month's
-    whole recap (banks + cash rows) as a JSON blob.
-  - `webauthn_credentials` — one row per registered passkey.
+1. Install frontend dependencies:
 
-  Endpoints: `status.php` (GET), `setup.php` / `login.php` / `logout.php`
-  (POST), `recaps.php` (GET for everything, POST `{ month, recap }` to
-  upsert one month), the `webauthn-*.php` and `revoke-password.php`
-  endpoints (see [Passkeys](#passkeys-passwordless-login)). Everything
-  except `status.php`, `setup.php`, `login.php`, and the two
-  passkey-login endpoints (`webauthn-login-options.php` /
-  `webauthn-login-verify.php` - signing in obviously can't require
-  already being signed in) requires an authenticated session.
+   ```bash
+   npm install
+   ```
 
-Since the recap data lives in one shared database, everyone who knows
-the app password sees the same months and edits — this is intentionally
-"one shared login", not per-person accounts.
+2. Create the database and tables:
 
-### Database schema
-
-The canonical schema lives in [`api/schema.sql`](api/schema.sql) (import
-it as described in [Backend setup](#backend-setup) below) — four
-tables, kept intentionally minimal:
-
-- `auth` — a single row (id `1`) holding the shared app password's
-  bcrypt hash (nullable, once passkeys let it be revoked - see
-  [Passkeys](#passkeys-passwordless-login)) and the WebAuthn "user
-  handle" shared by every passkey registered for this app. There's no
-  other row and no plaintext password anywhere in it (see [Security
-  model](#security-model)).
-- `sessions` — login sessions, read/written entirely by
-  [`api/lib/SessionHandler.php`](api/lib/SessionHandler.php); nothing
-  else touches it directly. Expired rows age out via PHP's normal
-  session garbage collection, same as file-based sessions.
-- `recaps` — one row per month (`"YYYY-MM"`), holding that month's
-  whole `{ banks, cashRows }` (see `RecapsByMonth` in
-  `src/lib/types.ts`) as a JSON string, upserted by
-  `POST /api/recaps.php`.
-- `webauthn_credentials` — one row per registered passkey (any number
-  of people/devices can each register their own - they all unlock the
-  same shared account): the credential id, its public key, a signature
-  counter (clone-detection), an optional label, and timestamps.
-
-Every `CREATE TABLE` statement in the file is `IF NOT EXISTS`, so
-re-running it against a database that already has these tables is a
-no-op - safe to import again after pulling an update. The two
-`ALTER TABLE` statements at the end upgrade a database created before
-passkeys existed (making `password_hash` nullable, adding
-`webauthn_user_id`) and are also safe to re-run.
-
-## Getting started
-
-Install the frontend dependencies:
-
-```bash
-npm install
-```
-
-Set up the database and backend config locally (see
-[Backend setup](#backend-setup) below), then run both dev servers:
-
-```bash
-npm run dev:api   # PHP built-in server, serves api/ on :8787
-npm run dev       # Vite dev server on :5173, proxies /api to :8787
-```
-
-Open http://localhost:5173.
-
-## Backend setup
-
-Requires **PHP 8.0 or newer** (cPanel's "MultiPHP Manager" lets you pick
-the version per domain) with the `pdo_mysql`, `openssl`, and `mbstring`
-extensions, all enabled by default on virtually all PHP installs.
-Hitting any `api/` endpoint on an older PHP returns a clear JSON error
-instead of a blank 500, so this is easy to confirm after deploying.
-
-1. Create a MySQL database (locally, or in cPanel's **MySQL Databases**)
-   and import the schema once:
    ```bash
    mysql -u <user> -p <database> < api/schema.sql
    ```
-2. Copy `api/config.sample.php` to `api/config.php` and fill in your
-   database host/name/user/password. `api/config.php` is gitignored —
-   never commit real credentials.
-3. Install the one PHP dependency (used for passkey login):
+
+3. Create `api/config.php` from `api/config.sample.php` and add the database connection values.
+
+4. Install the PHP dependency:
+
    ```bash
    cd api && composer install
    ```
-   This creates `api/vendor/` (gitignored, like `node_modules/`) - it
-   has to exist for `api/` to work at all, locally and once deployed.
-4. That's it — no migrations, no ORM. The first time anyone opens the
-   app, they'll see "Set the app password" and can create it.
+
+5. Start the app in two terminals:
+
+   ```bash
+   npm run dev:api
+   npm run dev
+   ```
+
+Open <http://localhost:5173>.
 
 ## Build
 
@@ -150,111 +56,25 @@ instead of a blank 500, so this is easy to confirm after deploying.
 npm run build
 ```
 
-This produces a `dist/` folder — a static frontend build. It needs the
-`api/` PHP backend (with a real `api/config.php`) reachable at the same
-domain under `/api` to actually work; see
-[Deploying to cPanel](#deploying-to-cpanel-or-any-lamp-host) below.
+The frontend is written to `dist/`. The PHP files under `api/` must be deployed alongside it.
 
-## Security model
+## Deploy
 
-- The shared app password is never stored in plain text — only its
-  bcrypt hash (`password_hash()`/`password_verify()` in PHP), in the
-  `auth` table.
-- Logging in starts a normal server-side session; the browser only ever
-  holds an httpOnly, `SameSite=Lax` session cookie (and `Secure` when
-  served over HTTPS) — never the password or a decryption key.
-- It's one shared password for everyone who has it, not per-person
-  accounts, and all recap data is centrally stored — everyone with the
-  password sees the same data.
-- There is no self-service password reset. If it's forgotten, whoever
-  has direct database access can set a new one by replacing the
-  `password_hash` value in the `auth` table with a fresh bcrypt hash
-  generated server-side (`password_hash()`) — never store or transmit
-  the plaintext password to do this.
-- Restrict who can reach phpMyAdmin/database tools and the hosting
-  control panel itself — anyone with direct database access can read
-  every recap and reset the app password, so treat that access with the
-  same care as the app password.
-- **Use HTTPS in production.** The password is sent to the login
-  endpoint on every sign-in; without HTTPS it (and the session cookie)
-  travel in the clear. Enable a free SSL certificate (cPanel's AutoSSL
-  or Let's Encrypt) before pointing real users at this. Passkeys need
-  this even more strictly - see below.
-- Optionally, the password itself can be revoked once a passkey works,
-  leaving passkeys as the *only* way to sign in - see
-  [Passkeys](#passkeys-passwordless-login).
+For a typical cPanel or LAMP host:
 
-## Passkeys (passwordless login)
+1. Build the frontend and install the PHP dependency.
+2. Import `api/schema.sql` into MySQL.
+3. Create `api/config.php` on the server from the sample file.
+4. Upload the contents of `dist/` and the `api/` directory next to each other.
+5. Enable HTTPS, open the site, and set the app password on first load.
 
-Anyone signed in with the password can register a passkey (Face ID,
-Touch ID, Windows Hello, or a hardware security key) from the
-fingerprint icon in the header, and sign in with it afterward instead
-of typing the password. Any number of people/devices can each register
-their own passkey - they all unlock the same shared account, the same
-way the password does.
+The app uses relative paths, so the same files can run at the domain root or in a subfolder.
 
-- **Registering requires an existing session.** You have to already be
-  signed in (with the password, or an existing passkey) to add a new
-  one - there's no way to register a passkey "cold", by design, so a
-  stranger can't add their own device just by finding the site.
-- **Passkeys require a secure context.** `navigator.credentials` simply
-  doesn't exist without HTTPS (or `localhost` in development) - the
-  fingerprint button won't do anything useful on a plain-HTTP deployment.
-  This is stricter than the rest of the app, which only *recommends*
-  HTTPS for the password.
-- **Revoking the password is optional and irreversible from the UI.**
-  Once at least one passkey is registered, the passkey dialog offers
-  "Revoke the password" - after that, `password_hash` in the `auth`
-  table is set to `NULL` and password login is refused outright
-  (`api/login.php` returns a clear error rather than silently failing).
-  From that point on, a registered passkey is the only way in.
-- **Two guardrails prevent locking everyone out by accident:**
-  revoking the password is refused if zero passkeys are registered, and
-  deleting a passkey is refused if it's the last one *and* the password
-  is already revoked. Neither guardrail helps if the one working
-  passkey is lost (a device is gone, browser data is cleared, etc.) -
-  make sure a passkey actually signs you in successfully before
-  revoking the password.
-- **Recovery if truly locked out** (no working passkey, password
-  revoked): the same direct-database-access path as a forgotten
-  password. An admin sets `password_hash` back to a fresh bcrypt hash
-  (`password_hash()`) directly in the `auth` table, which re-enables
-  password login immediately - no passkey needed to do this, since it
-  bypasses the app entirely.
+See [docs/SECURITY.md](docs/SECURITY.md) for credentials, sessions, passkeys, HTTPS, recovery, and deployment security guidance.
 
-## Deploying to cPanel (or any LAMP host)
+## Project layout
 
-1. Locally or in CI: `npm install && npm run build`, and
-   `cd api && composer install` (creates `api/vendor/`).
-2. In cPanel's **MySQL Databases**, create a database + user (grant it
-   all privileges on that database), then import `api/schema.sql` via
-   phpMyAdmin's **Import** tab (or `mysql -u ... -p ... < api/schema.sql`
-   if you have shell/SSH access).
-3. Enable a free SSL certificate for the domain/subdomain first, via
-   cPanel's **SSL/TLS Status** → **AutoSSL**, or **Let's Encrypt** if
-   your host offers it (see [Security model](#security-model) above) -
-   passkeys won't work at all without this (see
-   [Passkeys](#passkeys-passwordless-login)).
-4. Upload both of these into `public_html` (or a subfolder, for a
-   subdomain/`/some-path/` deployment):
-   - the *contents* of `dist/` (not the `dist` folder itself)
-   - the `api/` folder as-is (including the `vendor/` folder from step
-     1 - it's gitignored, so this is the only way it gets there), with
-     `api/config.php` created from `api/config.sample.php` and filled
-     in with the database credentials from step 2 (do this upload over
-     SFTP/File Manager, not by committing it to git)
-5. Visit the domain — you should land on "Set the app password" on
-   first load.
-
-Since asset paths in the build are relative and the frontend calls the
-API at the relative path `api/...`, the same upload works whether it
-ends up served from the domain root or a subfolder — no path
-configuration needed either way, as long as `api/` sits next to
-`index.html`.
-
-To update a live deployment, rebuild and re-upload the contents of
-`dist/` (and `api/`, if backend code changed — never re-upload
-`api/config.php` from git, it isn't tracked there; re-run `composer
-install` and re-upload `api/vendor/` only if `api/composer.json`
-changed). Nothing needs to be "installed" or restarted, since PHP is
-invoked fresh per request by the web server.
+- `src/` — frontend application and UI components
+- `api/` — PHP endpoints and database schema
+- `public/` — static assets
+- `dist/` — production frontend output
