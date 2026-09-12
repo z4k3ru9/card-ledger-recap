@@ -27,6 +27,38 @@ export class ApiError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+/** Validate the persisted recap envelope before it enters React state. */
+export function parseRecapCollection(value: unknown): RecapCollection {
+  if (!isRecord(value) || !isRecord(value.recaps) || !isRecord(value.revisions)) {
+    throw new ApiError('Server returned an invalid recap response.', 502, 'invalid_response')
+  }
+
+  for (const [month, revision] of Object.entries(value.revisions)) {
+    if (!/^\d{4}-\d{2}$/.test(month) || !isNonNegativeInteger(revision)) {
+      throw new ApiError('Server returned an invalid recap response.', 502, 'invalid_response')
+    }
+  }
+
+  for (const [month, recap] of Object.entries(value.recaps)) {
+    if (!/^\d{4}-\d{2}$/.test(month) || !isRecord(recap)) {
+      throw new ApiError('Server returned an invalid recap response.', 502, 'invalid_response')
+    }
+    if (!Array.isArray(recap.banks) || !Array.isArray(recap.cashRows)) {
+      throw new ApiError('Server returned an invalid recap response.', 502, 'invalid_response')
+    }
+  }
+
+  return value as unknown as RecapCollection
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}/${path}`, {
     ...init,
@@ -71,7 +103,7 @@ export async function logout(): Promise<void> {
 }
 
 export function fetchRecaps(signal?: AbortSignal): Promise<RecapCollection> {
-  return request<RecapCollection>('recaps.php', { signal })
+  return request<unknown>('recaps.php', { signal }).then(parseRecapCollection)
 }
 
 export async function saveRecap(
@@ -80,11 +112,14 @@ export async function saveRecap(
   expectedRevision: number,
   clientOperationId = crypto.randomUUID(),
 ): Promise<number> {
-  const result = await request<{ revision: number }>('recaps.php', {
+  const result = await request<unknown>('recaps.php', {
     method: 'POST',
     headers: { 'Idempotency-Key': clientOperationId },
     body: JSON.stringify({ month, recap, expectedRevision, client_operation_id: clientOperationId }),
   })
+  if (!isRecord(result) || !isNonNegativeInteger(result.revision)) {
+    throw new ApiError('Server returned an invalid save response.', 502, 'invalid_response')
+  }
   return result.revision
 }
 
