@@ -70,8 +70,8 @@ export async function logout(): Promise<void> {
   await request('logout.php', { method: 'POST' })
 }
 
-export function fetchRecaps(): Promise<RecapCollection> {
-  return request<RecapCollection>('recaps.php')
+export function fetchRecaps(signal?: AbortSignal): Promise<RecapCollection> {
+  return request<RecapCollection>('recaps.php', { signal })
 }
 
 export async function saveRecap(

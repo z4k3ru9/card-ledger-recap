@@ -147,6 +147,7 @@ function RecapApp({
   const [exporting, setExporting] = useState(false)
   const saveQueue = useRef<RecapSaveQueue | null>(null)
   const loadGeneration = useRef(new RequestGeneration())
+  const loadAbort = useRef<AbortController | null>(null)
   const recapsRef = useRef<RecapsByMonth>({})
   // Briefly shown while switching months, purely for visual feedback -
   // the target month's data is already in memory, but a beat of spinner
@@ -158,11 +159,14 @@ function RecapApp({
   const [justAddedBankId, setJustAddedBankId] = useState<string | null>(null)
 
   async function loadRecaps() {
+    loadAbort.current?.abort()
+    const abortController = new AbortController()
+    loadAbort.current = abortController
     const generation = loadGeneration.current.begin()
     if (generation < 0) return
     setLoadPhase('loading')
     try {
-      const stored = await fetchRecaps()
+      const stored = await fetchRecaps(abortController.signal)
       if (!loadGeneration.current.isCurrent(generation)) return
       saveQueue.current?.dispose()
       saveQueue.current = new RecapSaveQueue(saveRecap, stored.revisions, {
@@ -181,6 +185,7 @@ function RecapApp({
       setLoadPhase('ready')
     } catch (error) {
       if (!loadGeneration.current.isCurrent(generation)) return
+      if (error instanceof DOMException && error.name === 'AbortError') return
       if (error instanceof ApiError && error.status === 401) {
         setSessionExpired(true)
       } else {
@@ -194,6 +199,8 @@ function RecapApp({
     return () => {
       // oxlint-disable-next-line react-hooks/exhaustive-deps
       loadGeneration.current.dispose()
+      // oxlint-disable-next-line react-hooks/exhaustive-deps
+      loadAbort.current?.abort()
       // The queue is installed asynchronously by the initial load.
       // oxlint-disable-next-line react-hooks/exhaustive-deps
       saveQueue.current?.dispose()
