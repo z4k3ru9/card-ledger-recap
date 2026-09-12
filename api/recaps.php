@@ -24,6 +24,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = clr_read_json_body(1048576, 12);
+    $idempotencyKey = clr_idempotency_key($body);
+    $requestHash = hash('sha256', json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    $replay = clr_idempotency_replay($clrDb, 'recaps.post', $idempotencyKey, $requestHash);
+    if ($replay !== null) {
+        clr_json($replay['body'], $replay['status']);
+    }
     $month = (string) ($body['month'] ?? '');
     $expectedRevision = $body['expectedRevision'] ?? null;
 
@@ -47,7 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $actualRevision = $row ? (int) $row['revision'] : 0;
         if ($actualRevision !== $expectedRevision) {
             $clrDb->rollBack();
-            clr_json_error(409, 'This month was changed elsewhere. Reload before saving again.', 'recap_conflict');
+            $response = ['error' => 'This month was changed elsewhere. Reload before saving again.', 'code' => 'recap_conflict'];
+            clr_idempotency_store($clrDb, 'recaps.post', $idempotencyKey, $requestHash, 409, $response);
+            clr_json($response, 409);
         }
 
         $nextRevision = $actualRevision + 1;
@@ -89,7 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         throw $e;
     }
 
-    clr_json(['ok' => true, 'revision' => $nextRevision]);
+    $response = ['ok' => true, 'revision' => $nextRevision];
+    clr_idempotency_store($clrDb, 'recaps.post', $idempotencyKey, $requestHash, 200, $response);
+    clr_json($response);
 }
 
 clr_json_error(405, 'Expected GET or POST.');

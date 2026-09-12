@@ -78,10 +78,12 @@ export async function saveRecap(
   month: string,
   recap: MonthRecap,
   expectedRevision: number,
+  clientOperationId = crypto.randomUUID(),
 ): Promise<number> {
   const result = await request<{ revision: number }>('recaps.php', {
     method: 'POST',
-    body: JSON.stringify({ month, recap, expectedRevision }),
+    headers: { 'Idempotency-Key': clientOperationId },
+    body: JSON.stringify({ month, recap, expectedRevision, client_operation_id: clientOperationId }),
   })
   return result.revision
 }

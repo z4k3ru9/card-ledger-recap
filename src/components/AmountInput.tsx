@@ -1,4 +1,5 @@
 import { Input } from '@/components/ui/input'
+import { parseMinorUnits } from '@/lib/money'
 
 interface AmountInputProps {
   value: number
@@ -20,8 +21,7 @@ export function AmountInput({ value, onChange, className }: AmountInputProps) {
       className={className}
       value={display}
       onChange={(e) => {
-        const digitsOnly = e.target.value.replace(/\D/g, '')
-        onChange(digitsOnly ? Number(digitsOnly) : 0)
+        onChange(parseMinorUnits(e.target.value))
       }}
     />
   )

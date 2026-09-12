@@ -3,6 +3,7 @@
 const CLR_MAX_BANKS = 50;
 const CLR_MAX_ROWS_PER_BANK = 1000;
 const CLR_MAX_CASH_ROWS = 1000;
+// Legacy recap amounts are IDR minor units (whole rupiah), never floats.
 const CLR_MAX_AMOUNT = 1000000000000;
 
 function clr_is_list(array $value): bool
@@ -60,11 +61,11 @@ function clr_validate_date($value): string
     return $date;
 }
 
-function clr_validate_amount($value): float|int
+function clr_validate_amount($value): int
 {
-    if ((!is_int($value) && !is_float($value)) || !is_finite((float) $value)
+    if (!is_int($value)
         || $value < 0 || $value > CLR_MAX_AMOUNT) {
-        clr_json_error(400, 'Amounts must be finite non-negative numbers within the supported range.', 'invalid_recap');
+        clr_json_error(400, 'Amounts must be non-negative integer minor units within the supported range.', 'invalid_recap');
     }
     return $value;
 }

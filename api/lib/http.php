@@ -55,3 +55,71 @@ function clr_require_method(string $method): void
         clr_json_error(405, "Expected $method.");
     }
 }
+
+/** Return a validated mutation identity from the header/body pair. */
+function clr_idempotency_key(array $body): string
+{
+    $header = trim((string) ($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ''));
+    $client = trim((string) ($body['client_operation_id'] ?? ''));
+    if ($header !== '' && $client !== '' && !hash_equals($header, $client)) {
+        clr_json_error(400, 'Idempotency-Key and client_operation_id must match.', 'invalid_idempotency_key');
+    }
+    $key = $header !== '' ? $header : $client;
+    if ($key === '' || strlen($key) > 128 || !preg_match('/^[A-Za-z0-9._:-]+$/', $key)) {
+        clr_json_error(400, 'A valid Idempotency-Key is required.', 'invalid_idempotency_key');
+    }
+    return $key;
+}
+
+/** Replay a completed mutation, or reject reuse of a key for different input. */
+function clr_idempotency_replay(PDO $db, string $scope, string $key, string $requestHash): ?array
+{
+    $stmt = $db->prepare(
+        'SELECT request_hash, response_status, response_body
+         FROM idempotency_keys WHERE scope = :scope AND idempotency_key = :key',
+    );
+    $stmt->execute([':scope' => $scope, ':key' => $key]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+    if (!hash_equals((string) $row['request_hash'], $requestHash)) {
+        clr_json_error(409, 'This idempotency key was already used for a different request.', 'idempotency_conflict');
+    }
+    $body = json_decode((string) $row['response_body'], true);
+    if (!is_array($body)) {
+        clr_json_error(500, 'Stored idempotency response is invalid.', 'idempotency_corrupt');
+    }
+    return ['status' => (int) $row['response_status'], 'body' => $body];
+}
+
+/** Store a final response so a lost response can be safely replayed. */
+function clr_idempotency_store(
+    PDO $db,
+    string $scope,
+    string $key,
+    string $requestHash,
+    int $status,
+    array $body,
+): void {
+    $stmt = $db->prepare(
+        'INSERT INTO idempotency_keys
+           (scope, idempotency_key, request_hash, response_status, response_body)
+         VALUES (:scope, :key, :hash, :status, :body)',
+    );
+    try {
+        $stmt->execute([
+            ':scope' => $scope,
+            ':key' => $key,
+            ':hash' => $requestHash,
+            ':status' => $status,
+            ':body' => json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+        ]);
+    } catch (PDOException $e) {
+        if ($e->getCode() !== '23000') {
+            throw $e;
+        }
+        // A concurrent request won the insert. Its response is authoritative;
+        // the next request will replay it after this transaction completes.
+    }
+}

@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS auth_rate_limits (
   INDEX auth_rate_limits_last_attempt (last_attempt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Durable replay records for mutation requests. The scope prevents a key used
+-- by one endpoint from replaying a response from another endpoint.
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  scope VARCHAR(80) NOT NULL,
+  idempotency_key VARCHAR(128) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  response_status SMALLINT UNSIGNED NOT NULL,
+  response_body MEDIUMTEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (scope, idempotency_key),
+  INDEX idempotency_keys_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Upgrades a database created before passkeys existed. password_hash was
 -- originally NOT NULL; it has to become nullable so the password can be
 -- revoked once at least one passkey is registered.

@@ -16,6 +16,7 @@ function events() {
       onState: (_month: string, state: SaveState) => states.push(state),
       onUnauthorized: vi.fn(),
       onConflict: vi.fn(),
+      onRetryAvailable: vi.fn(),
     },
   }
 }
@@ -84,6 +85,66 @@ describe('RecapSaveQueue', () => {
     expect(save).toHaveBeenCalledOnce()
     expect(tracked.callbacks.onConflict).toHaveBeenCalledWith('2026-09')
     expect(tracked.states.at(-1)).toBe('conflict')
+    queue.dispose()
+    vi.useRealTimers()
+  })
+
+  it('bounds retryable failures and exposes manual retry', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn().mockRejectedValue(new ApiError('server', 503))
+    const tracked = events()
+    const queue = new RecapSaveQueue(save, {}, tracked.callbacks, 10)
+
+    queue.enqueue('2026-09', recap(1))
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledTimes(4)
+    expect(tracked.callbacks.onRetryAvailable).toHaveBeenCalledWith('2026-09')
+    queue.dispose()
+    vi.useRealTimers()
+  })
+
+  it('does not retry permanent failures and offers manual retry', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn().mockRejectedValue(new ApiError('invalid', 422))
+    const tracked = events()
+    tracked.callbacks.onRetryAvailable = vi.fn()
+    const queue = new RecapSaveQueue(save, {}, tracked.callbacks, 10)
+
+    queue.enqueue('2026-09', recap(1))
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledOnce()
+    expect(tracked.callbacks.onRetryAvailable).toHaveBeenCalledWith('2026-09')
+    queue.dispose()
+    vi.useRealTimers()
+  })
+
+  it('ignores an in-flight completion after disposal', async () => {
+    vi.useFakeTimers()
+    let resolve!: (revision: number) => void
+    const save = vi.fn(() => new Promise<number>((r) => { resolve = r }))
+    const tracked = events()
+    const queue = new RecapSaveQueue(save, {}, tracked.callbacks, 10)
+    queue.enqueue('2026-09', recap(1))
+    await vi.advanceTimersByTimeAsync(10)
+    queue.dispose()
+    resolve(2)
+    await Promise.resolve()
+    expect(tracked.states).toEqual(['unsaved', 'saving'])
+    vi.useRealTimers()
+  })
+
+  it('recovers after a bounded retry failure when manually retried', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn().mockRejectedValueOnce(new ApiError('server', 503)).mockResolvedValueOnce(8)
+    const tracked = events()
+    tracked.callbacks.onRetryAvailable = vi.fn()
+    const queue = new RecapSaveQueue(save, {}, tracked.callbacks, 10)
+    queue.enqueue('2026-09', recap(1))
+    await vi.runAllTimersAsync()
+    queue.retry('2026-09')
+    await vi.runAllTimersAsync()
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(tracked.states.at(-1)).toBe('saved')
     queue.dispose()
     vi.useRealTimers()
   })

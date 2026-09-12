@@ -5,7 +5,7 @@ require __DIR__ . '/bootstrap.php';
 
 clr_require_method('GET');
 
-$requiredTables = ['auth', 'sessions', 'recaps', 'webauthn_credentials', 'auth_rate_limits'];
+$requiredTables = ['auth', 'sessions', 'recaps', 'webauthn_credentials', 'auth_rate_limits', 'idempotency_keys'];
 $placeholders = implode(',', array_fill(0, count($requiredTables), '?'));
 $stmt = $clrDb->prepare(
     "SELECT table_name FROM information_schema.tables
