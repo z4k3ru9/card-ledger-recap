@@ -25,4 +25,9 @@ return [
     // Set true only when the hosting proxy is known to overwrite this
     // header and the origin is otherwise protected from direct access.
     'trust_forwarded_proto' => false,
+
+    // Set true only during the PackTally cutover after the final backup and
+    // legacy_recaps checksum comparison have completed. This makes the
+    // legacy recap endpoint read-only and prevents accidental dual writes.
+    'legacy_read_only' => false,
 ];

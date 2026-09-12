@@ -23,6 +23,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!empty(clr_config()['legacy_read_only'])) {
+        clr_json_error(
+            405,
+            'Legacy recaps are read-only after PackTally cutover.',
+            'legacy_read_only',
+        );
+    }
     $body = clr_read_json_body(1048576, 12);
     $idempotencyKey = clr_idempotency_key($body);
     $requestHash = hash('sha256', json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));

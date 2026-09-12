@@ -6,6 +6,8 @@ The PackTally OpenAPI file is a prelaunch design contract, not a claim that thos
 
 The legacy recap model remains isolated and must not be treated as the normalized trip/expense model. A route may be changed to `implemented` only after its authenticated handler, persistence, authorization, idempotency behavior, and integration tests exist.
 
+The cutover switch is `legacy_read_only` in `api/config.php`. It defaults to `false` for the existing deployment. Set it to `true` only after the final backup has been verified and every row has been copied and checksum-compared into `legacy_recaps`; then legacy POST writes fail with `legacy_read_only` while authenticated reads remain available.
+
 ## Scope and identity
 
 The only repository evidence available was `z4k3ru9/card-ledger-recap`. The repository contains no `PackTally` or `CuanKoper` branding, so brand/repository naming is a release-management discrepancy. GitHub `main` is `69dd40c`; local branch `codex/repair-audit-findings` is one unpushed commit ahead (`c3a13bc`). Findings below distinguish the public baseline from that local repair work.

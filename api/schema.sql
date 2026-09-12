@@ -76,6 +76,26 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   INDEX idempotency_keys_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Ordered migration ledger used by deployment tooling. Checksums let the
+-- release process detect a changed migration instead of silently reapplying
+-- different SQL under the same identifier.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id VARCHAR(128) NOT NULL PRIMARY KEY,
+  checksum CHAR(64) NOT NULL,
+  applied_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Immutable byte-for-byte archive created during the legacy cutover. New
+-- PackTally flows must never write to the legacy JSON model after activation.
+CREATE TABLE IF NOT EXISTS legacy_recaps (
+  month CHAR(7) NOT NULL PRIMARY KEY,
+  data_json LONGTEXT NOT NULL,
+  original_revision INT UNSIGNED NOT NULL,
+  original_updated_at TIMESTAMP NULL,
+  imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  checksum CHAR(64) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Upgrades a database created before passkeys existed. password_hash was
 -- originally NOT NULL; it has to become nullable so the password can be
 -- revoked once at least one passkey is registered.
