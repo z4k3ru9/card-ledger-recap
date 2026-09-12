@@ -155,7 +155,10 @@ export function BankCard({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-40">
+              <TableHead
+                className="w-40"
+                aria-sort={sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : 'none'}
+              >
                 <button
                   type="button"
                   onClick={handleSortByDate}
@@ -221,7 +224,7 @@ export function BankCard({
                     disabled={
                       bank.transactions.length === 1 && isRowEmpty(row)
                     }
-                    aria-label="Remove row"
+                    aria-label={`Remove transaction ${row.description || row.date || 'entry'}`}
                   >
                     <Trash2 className="size-4" />
                   </Button>

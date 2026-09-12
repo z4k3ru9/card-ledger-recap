@@ -149,7 +149,7 @@ export function CashCard({ rows, onChange }: CashCardProps) {
                     className="size-8 text-muted-foreground hover:text-destructive"
                     onClick={() => removeRow(row.id)}
                     disabled={rows.length === 1 && isRowEmpty(row)}
-                    aria-label="Remove row"
+                    aria-label={`Remove cash ${row.description || row.date || 'entry'}`}
                   >
                     <Trash2 className="size-4" />
                   </Button>
