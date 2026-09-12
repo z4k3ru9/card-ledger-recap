@@ -93,6 +93,24 @@ function clr_idempotency_replay(PDO $db, string $scope, string $key, string $req
     return ['status' => (int) $row['response_status'], 'body' => $body];
 }
 
+/** Serialize first-time requests sharing one mutation key on this DB connection. */
+function clr_idempotency_lock(PDO $db, string $scope, string $key): void
+{
+    $lockName = 'clr:idempotency:' . hash('sha256', $scope . "\0" . $key);
+    $stmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10) AS acquired');
+    $stmt->execute([':lock_name' => $lockName]);
+    if ((int) $stmt->fetchColumn() !== 1) {
+        clr_json_error(503, 'The operation is busy. Retry shortly.', 'operation_busy');
+    }
+}
+
+function clr_idempotency_unlock(PDO $db, string $scope, string $key): void
+{
+    $lockName = 'clr:idempotency:' . hash('sha256', $scope . "\0" . $key);
+    $stmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+    $stmt->execute([':lock_name' => $lockName]);
+}
+
 /** Store a final response so a lost response can be safely replayed. */
 function clr_idempotency_store(
     PDO $db,

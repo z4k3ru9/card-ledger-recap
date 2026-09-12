@@ -26,8 +26,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = clr_read_json_body(1048576, 12);
     $idempotencyKey = clr_idempotency_key($body);
     $requestHash = hash('sha256', json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    clr_idempotency_lock($clrDb, 'recaps.post', $idempotencyKey);
     $replay = clr_idempotency_replay($clrDb, 'recaps.post', $idempotencyKey, $requestHash);
     if ($replay !== null) {
+        clr_idempotency_unlock($clrDb, 'recaps.post', $idempotencyKey);
         clr_json($replay['body'], $replay['status']);
     }
     $month = (string) ($body['month'] ?? '');
@@ -55,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clrDb->rollBack();
             $response = ['error' => 'This month was changed elsewhere. Reload before saving again.', 'code' => 'recap_conflict'];
             clr_idempotency_store($clrDb, 'recaps.post', $idempotencyKey, $requestHash, 409, $response);
+            clr_idempotency_unlock($clrDb, 'recaps.post', $idempotencyKey);
             clr_json($response, 409);
         }
 
@@ -99,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $response = ['ok' => true, 'revision' => $nextRevision];
     clr_idempotency_store($clrDb, 'recaps.post', $idempotencyKey, $requestHash, 200, $response);
+    clr_idempotency_unlock($clrDb, 'recaps.post', $idempotencyKey);
     clr_json($response);
 }
 

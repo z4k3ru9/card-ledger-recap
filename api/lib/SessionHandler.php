@@ -70,9 +70,11 @@ final class ClrSessionHandler implements SessionHandlerInterface
 /** Starts a session backed by ClrSessionHandler, with sane cookie flags. */
 function clr_start_session(PDO $db): void
 {
+    $config = clr_config();
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || ($_SERVER['SERVER_PORT'] ?? null) == 443
-        || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+        || (!empty($config['trust_forwarded_proto'])
+            && ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 
     session_set_save_handler(new ClrSessionHandler($db), true);
     session_name('clr_session');
