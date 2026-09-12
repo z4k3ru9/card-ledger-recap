@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, LogOut, CreditCard, Share2 } from 'lucide-react'
+import { Loader2, LogOut, CreditCard, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -184,6 +184,8 @@ function RecapApp({
   }
 
   function handleMonthChange(nextMonth: string) {
+    const currentRecap = recaps[month]
+    if (currentRecap) void saveRecap(month, currentRecap)
     setMonthTransitioning(true)
     setMonth(nextMonth)
     setRecaps((prev) =>
@@ -224,33 +226,9 @@ function RecapApp({
     updateRecap((r) => ({ ...r, cashRows: nextCashRows }))
   }
 
-  async function handleExport() {
+  function handleExport() {
     const doc = buildRecapPdf({ month, banks, cashRows })
     const filename = recapPdfFilename(month)
-    const blob = doc.output('blob')
-    const file = new File([blob], filename, { type: 'application/pdf' })
-
-    const canShareFile =
-      typeof navigator.share === 'function' &&
-      typeof navigator.canShare === 'function' &&
-      navigator.canShare({ files: [file] })
-
-    if (canShareFile) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: filename,
-          text: `Rekap ${formatMonthLabel(month)}`,
-        })
-        return
-      } catch (err) {
-        // The user cancelling the share sheet isn't an error - just do
-        // nothing. Anything else (no share target available, etc.)
-        // falls through to a plain download instead.
-        if (err instanceof Error && err.name === 'AbortError') return
-      }
-    }
-
     doc.save(filename)
   }
 
@@ -273,12 +251,17 @@ function RecapApp({
       <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-8">
           <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <div className="flex size-10 shrink-0 items-center justify-center bg-primary text-primary-foreground">
               <CreditCard className="size-5" />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              Monthly Credit Card Usage Recap
-            </h1>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Statement notes
+              </p>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Monthly recap
+              </h1>
+            </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="month" className="sr-only">
@@ -293,8 +276,8 @@ function RecapApp({
                 onChange={(e) => handleMonthChange(e.target.value)}
               />
               <Button onClick={handleExport}>
-                <Share2 className="size-4" />
-                <span className="hidden sm:inline">Share PDF</span>
+                <Download className="size-4" />
+                <span className="hidden sm:inline">Export PDF</span>
               </Button>
               <PasskeyManager
                 passwordEnabled={passwordEnabled}
@@ -325,13 +308,23 @@ function RecapApp({
             key={month}
             className="flex animate-in flex-col gap-6 fade-in-0 slide-in-from-top-4 duration-300"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
-              <p className="text-sm font-medium">Add a bank statement</p>
+            <section className="grid gap-5 border-y py-5 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-primary">
+                  {formatMonthLabel(month)}
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+                  Enter statement items
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add each line from your statement. Totals update as you type.
+                </p>
+              </div>
               <AddBankControl
                 existingNames={banks.map((b) => b.bankName)}
                 onAdd={addBank}
               />
-            </div>
+            </section>
 
             {banks.length === 0 && (
               <Card className="border-dashed">
@@ -355,9 +348,21 @@ function RecapApp({
 
             <CashCard rows={cashRows} onChange={setCashRows} />
 
-            <Card>
+            <Card className="border-primary/20 bg-primary/[0.03]">
               <CardHeader>
-                <CardTitle className="text-base">Summary</CardTitle>
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      Recap total
+                    </p>
+                    <CardTitle className="mt-1 text-3xl tabular-nums">
+                      {formatCurrency(grandTotal)}
+                    </CardTitle>
+                  </div>
+                  <p className="max-w-40 text-right text-xs text-muted-foreground">
+                    {banks.length} {banks.length === 1 ? 'bank' : 'banks'} · {formatMonthLabel(month)}
+                  </p>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
                 {banks.map((bank) => (
