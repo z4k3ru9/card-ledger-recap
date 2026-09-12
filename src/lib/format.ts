@@ -1,14 +1,10 @@
-import type { MinorUnits } from './money'
-import { isMinorUnits } from './money'
-
 const currencyFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
   currency: 'IDR',
   maximumFractionDigits: 0,
 })
 
-export function formatCurrency(amount: MinorUnits): string {
-  if (!isMinorUnits(amount)) return 'Rp —'
+export function formatCurrency(amount: number): string {
   return currencyFormatter.format(amount)
 }
 

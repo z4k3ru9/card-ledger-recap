@@ -1,12 +1,10 @@
-import type { MinorUnits } from './money'
-
 export type CashType = 'deposit' | 'debit'
 
 export interface TransactionRow {
   id: string
   date: string
   description: string
-  amount: MinorUnits
+  amount: number
 }
 
 export interface BankBlock {
@@ -21,7 +19,7 @@ export interface CashRow {
   date: string
   type: CashType
   description: string
-  amount: MinorUnits
+  amount: number
 }
 
 /** One month's worth of bank + cash data, keyed by "YYYY-MM" in AppState. */

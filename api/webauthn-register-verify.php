@@ -5,12 +5,10 @@
 // passkey.
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/lib/webauthn.php';
-require __DIR__ . '/lib/rate_limit.php';
 
 clr_require_method('POST');
 clr_require_auth();
 clr_require_webauthn_origin();
-clr_rate_limit_consume($clrDb, 'passkey_register_verify', 10, 900);
 
 $body = clr_read_json_body();
 $clientDataJSON = clr_base64url_decode((string) ($body['clientDataJSON'] ?? ''));
@@ -32,8 +30,7 @@ $webAuthn = clr_webauthn();
 try {
     $data = $webAuthn->processCreate($clientDataJSON, $attestationObject, $challenge, true);
 } catch (Throwable $e) {
-    error_log(json_encode(['event' => 'passkey_registration_verification_failed', 'request_id' => $clrRequestId, 'exception' => (string) $e]));
-    clr_json_error(400, 'Could not verify the new passkey.', 'passkey_verification_failed');
+    clr_json_error(400, 'Could not verify the new passkey: ' . $e->getMessage());
 }
 
 unset($_SESSION['webauthn_challenge']);
@@ -50,7 +47,5 @@ $stmt->execute([
     ':sign_count' => $data->signatureCounter ?? 0,
     ':label' => $label,
 ]);
-
-clr_rate_limit_clear($clrDb, 'passkey_register_verify');
 
 clr_json(['ok' => true]);

@@ -23,22 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!empty(clr_config()['legacy_read_only'])) {
-        clr_json_error(
-            405,
-            'Legacy recaps are read-only after PackTally cutover.',
-            'legacy_read_only',
-        );
-    }
     $body = clr_read_json_body(1048576, 12);
-    $idempotencyKey = clr_idempotency_key($body);
-    $requestHash = hash('sha256', json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-    clr_idempotency_lock($clrDb, 'recaps.post', $idempotencyKey);
-    $replay = clr_idempotency_replay($clrDb, 'recaps.post', $idempotencyKey, $requestHash);
-    if ($replay !== null) {
-        clr_idempotency_unlock($clrDb, 'recaps.post', $idempotencyKey);
-        clr_json($replay['body'], $replay['status']);
-    }
     $month = (string) ($body['month'] ?? '');
     $expectedRevision = $body['expectedRevision'] ?? null;
 
@@ -62,10 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $actualRevision = $row ? (int) $row['revision'] : 0;
         if ($actualRevision !== $expectedRevision) {
             $clrDb->rollBack();
-            $response = ['error' => 'This month was changed elsewhere. Reload before saving again.', 'code' => 'recap_conflict'];
-            clr_idempotency_store($clrDb, 'recaps.post', $idempotencyKey, $requestHash, 409, $response);
-            clr_idempotency_unlock($clrDb, 'recaps.post', $idempotencyKey);
-            clr_json($response, 409);
+            clr_json_error(409, 'This month was changed elsewhere. Reload before saving again.', 'recap_conflict');
         }
 
         $nextRevision = $actualRevision + 1;
@@ -107,10 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         throw $e;
     }
 
-    $response = ['ok' => true, 'revision' => $nextRevision];
-    clr_idempotency_store($clrDb, 'recaps.post', $idempotencyKey, $requestHash, 200, $response);
-    clr_idempotency_unlock($clrDb, 'recaps.post', $idempotencyKey);
-    clr_json($response);
+    clr_json(['ok' => true, 'revision' => $nextRevision]);
 }
 
 clr_json_error(405, 'Expected GET or POST.');

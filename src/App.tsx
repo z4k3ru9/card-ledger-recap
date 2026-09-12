@@ -24,7 +24,6 @@ import { collectItemSuggestions, ITEM_SUGGESTIONS_LIST_ID } from '@/lib/itemSugg
 import { ApiError, fetchRecaps, getStatus, logout, saveRecap } from '@/lib/api'
 import type { AuthStatus } from '@/lib/api'
 import { RecapSaveQueue, type SaveState } from '@/lib/recapSaveQueue'
-import { RequestGeneration } from '@/lib/requestGeneration'
 import type { BankBlock, CashRow, MonthRecap, RecapsByMonth } from '@/lib/types'
 
 function currentMonthValue(): string {
@@ -49,8 +48,6 @@ function App() {
     }
   }
 
-  // The queue is deliberately read at cleanup time because recap loading is asynchronous.
-  // oxlint-disable react-hooks/exhaustive-deps
   useEffect(() => {
     let cancelled = false
     void getStatus()
@@ -66,7 +63,6 @@ function App() {
       cancelled = true
     }
   }, [])
-  // oxlint-enable react-hooks/exhaustive-deps
 
   if (authPhase === 'loading') {
     return (
@@ -146,8 +142,6 @@ function RecapApp({
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({})
   const [exporting, setExporting] = useState(false)
   const saveQueue = useRef<RecapSaveQueue | null>(null)
-  const loadGeneration = useRef(new RequestGeneration())
-  const loadAbort = useRef<AbortController | null>(null)
   const recapsRef = useRef<RecapsByMonth>({})
   // Briefly shown while switching months, purely for visual feedback -
   // the target month's data is already in memory, but a beat of spinner
@@ -159,15 +153,9 @@ function RecapApp({
   const [justAddedBankId, setJustAddedBankId] = useState<string | null>(null)
 
   async function loadRecaps() {
-    loadAbort.current?.abort()
-    const abortController = new AbortController()
-    loadAbort.current = abortController
-    const generation = loadGeneration.current.begin()
-    if (generation < 0) return
     setLoadPhase('loading')
     try {
-      const stored = await fetchRecaps(abortController.signal)
-      if (!loadGeneration.current.isCurrent(generation)) return
+      const stored = await fetchRecaps()
       saveQueue.current?.dispose()
       saveQueue.current = new RecapSaveQueue(saveRecap, stored.revisions, {
         onState: (changedMonth, state) =>
@@ -184,8 +172,6 @@ function RecapApp({
       setSaveStates({})
       setLoadPhase('ready')
     } catch (error) {
-      if (!loadGeneration.current.isCurrent(generation)) return
-      if (error instanceof DOMException && error.name === 'AbortError') return
       if (error instanceof ApiError && error.status === 401) {
         setSessionExpired(true)
       } else {
@@ -196,15 +182,7 @@ function RecapApp({
 
   useEffect(() => {
     void loadRecaps()
-    return () => {
-      // oxlint-disable-next-line react-hooks/exhaustive-deps
-      loadGeneration.current.dispose()
-      // oxlint-disable-next-line react-hooks/exhaustive-deps
-      loadAbort.current?.abort()
-      // The queue is installed asynchronously by the initial load.
-      // oxlint-disable-next-line react-hooks/exhaustive-deps
-      saveQueue.current?.dispose()
-    }
+    return () => saveQueue.current?.dispose()
     // The initial load owns the queue lifetime; retries call loadRecaps explicitly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
