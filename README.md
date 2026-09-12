@@ -53,11 +53,10 @@ hosting (no Node.js needed in production):
     filesystem, so it survives however cPanel/shared hosting happens to
     run PHP.
   - `recaps` — one row per month (`"YYYY-MM"`), holding that month's
-    whole recap (banks + cash rows) as a JSON blob plus a revision used for
-    compare-and-swap conflict detection.
+    whole recap (banks + cash rows) as a JSON blob.
   - `webauthn_credentials` — one row per registered passkey.
 
-  Endpoints: `status.php` / `health.php` (GET), `setup.php` / `login.php` / `logout.php`
+  Endpoints: `status.php` (GET), `setup.php` / `login.php` / `logout.php`
   (POST), `recaps.php` (GET for everything, POST `{ month, recap }` to
   upsert one month), the `webauthn-*.php` and `revoke-password.php`
   endpoints (see [Passkeys](#passkeys-passwordless-login)). Everything
@@ -88,8 +87,8 @@ tables, kept intentionally minimal:
   session garbage collection, same as file-based sessions.
 - `recaps` — one row per month (`"YYYY-MM"`), holding that month's
   whole `{ banks, cashRows }` (see `RecapsByMonth` in
-  `src/lib/types.ts`) as a JSON string. Writes require the current revision
-  and return `409` when another session has changed the month.
+  `src/lib/types.ts`) as a JSON string, upserted by
+  `POST /api/recaps.php`.
 - `webauthn_credentials` — one row per registered passkey (any number
   of people/devices can each register their own - they all unlock the
   same shared account): the credential id, its public key, a signature
@@ -142,13 +141,8 @@ instead of a blank 500, so this is easy to confirm after deploying.
    ```
    This creates `api/vendor/` (gitignored, like `node_modules/`) - it
    has to exist for `api/` to work at all, locally and once deployed.
-4. Configure `setup_secret`, `webauthn_rp_id`, and
-   `webauthn_allowed_origin` in `api/config.php`. Keep the setup secret
-   private and use a long random value; the first-run screen requires it
-   before it will create the shared password. Do not expose the site publicly
-   until this is configured.
-5. That's it — no migrations, no ORM. The first time an authorized operator
-   opens the app, they'll see "Set the app password" and can create it.
+4. That's it — no migrations, no ORM. The first time anyone opens the
+   app, they'll see "Set the app password" and can create it.
 
 ## Build
 

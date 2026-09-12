@@ -54,7 +54,4 @@ function Button({
   )
 }
 
-// This generated shadcn module intentionally exports its styling variant
-// alongside the component; keep the Fast Refresh warning narrowly scoped.
-// oxlint-disable-next-line react/only-export-components
 export { Button, buttonVariants }

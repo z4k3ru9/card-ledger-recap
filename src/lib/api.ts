@@ -4,28 +4,14 @@
 // holds an httpOnly session cookie, backed by a `sessions` table on the
 // server (see api/lib/SessionHandler.php) - there's no client-side crypto
 // key to manage anymore.
-import type { MonthRecap, RecapCollection } from './types'
+import type { MonthRecap, RecapsByMonth } from './types'
 
 // Relative (no leading slash) so this resolves under whatever subfolder
 // the app itself is served from - same reasoning as `base: './'` in
 // vite.config.ts.
 const API_BASE = 'api'
 
-export class ApiError extends Error {
-  readonly status: number
-  readonly code?: string
-
-  constructor(
-    message: string,
-    status: number,
-    code?: string,
-  ) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.code = code
-  }
-}
+export class ApiError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}/${path}`, {
@@ -37,8 +23,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const message =
       body && typeof body.error === 'string' ? body.error : `Request failed (${res.status})`
-    const code = body && typeof body.code === 'string' ? body.code : undefined
-    throw new ApiError(message, res.status, code)
+    throw new ApiError(message)
   }
   return body as T
 }
@@ -55,11 +40,8 @@ export function getStatus(): Promise<AuthStatus> {
   return request<AuthStatus>('status.php')
 }
 
-export async function setupPassword(password: string, setupSecret: string): Promise<void> {
-  await request('setup.php', {
-    method: 'POST',
-    body: JSON.stringify({ password, setupSecret }),
-  })
+export async function setupPassword(password: string): Promise<void> {
+  await request('setup.php', { method: 'POST', body: JSON.stringify({ password }) })
 }
 
 export async function login(password: string): Promise<void> {
@@ -70,20 +52,16 @@ export async function logout(): Promise<void> {
   await request('logout.php', { method: 'POST' })
 }
 
-export function fetchRecaps(): Promise<RecapCollection> {
-  return request<RecapCollection>('recaps.php')
+export async function fetchRecaps(): Promise<RecapsByMonth> {
+  const { recaps } = await request<{ recaps: RecapsByMonth }>('recaps.php')
+  return recaps
 }
 
-export async function saveRecap(
-  month: string,
-  recap: MonthRecap,
-  expectedRevision: number,
-): Promise<number> {
-  const result = await request<{ revision: number }>('recaps.php', {
+export async function saveRecap(month: string, recap: MonthRecap): Promise<void> {
+  await request('recaps.php', {
     method: 'POST',
-    body: JSON.stringify({ month, recap, expectedRevision }),
+    body: JSON.stringify({ month, recap }),
   })
-  return result.revision
 }
 
 // --- Passkeys (WebAuthn) ---------------------------------------------

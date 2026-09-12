@@ -3,25 +3,11 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use lbuchs\WebAuthn\WebAuthn;
 
-function clr_webauthn_config(): array
+/** The domain this request is being served from, with any port stripped. */
+function clr_webauthn_rp_id(): string
 {
-    $config = clr_config();
-    $rpId = trim((string) ($config['webauthn_rp_id'] ?? ''));
-    $origin = rtrim(trim((string) ($config['webauthn_allowed_origin'] ?? '')), '/');
-    if ($rpId === '' || $origin === '') {
-        clr_json_error(503, 'WebAuthn is not configured on this server.');
-    }
-    return ['rp_id' => $rpId, 'origin' => $origin];
-}
-
-/** Reject WebAuthn ceremonies from any origin not fixed in server config. */
-function clr_require_webauthn_origin(): void
-{
-    $expected = clr_webauthn_config()['origin'];
-    $actual = rtrim((string) ($_SERVER['HTTP_ORIGIN'] ?? ''), '/');
-    if ($actual === '' || !hash_equals($expected, $actual)) {
-        clr_json_error(403, 'This origin is not allowed to use passkeys.');
-    }
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    return preg_replace('/:\d+$/', '', $host);
 }
 
 function clr_webauthn(): WebAuthn
@@ -36,12 +22,7 @@ function clr_webauthn(): WebAuthn
     // probably what you want to use if you want secure login for a
     // public website." The final `true` switches JSON output to plain
     // base64url strings (matches what the frontend expects).
-    $webAuthn = new WebAuthn(
-        'Card Ledger Recap',
-        clr_webauthn_config()['rp_id'],
-        ['none'],
-        true,
-    );
+    $webAuthn = new WebAuthn('Card Ledger Recap', clr_webauthn_rp_id(), ['none'], true);
     return $webAuthn;
 }
 

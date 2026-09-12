@@ -7,7 +7,6 @@ require __DIR__ . '/lib/webauthn.php';
 
 clr_require_method('POST');
 clr_require_auth();
-clr_require_webauthn_origin();
 
 $webAuthn = clr_webauthn();
 $userId = clr_webauthn_user_id($clrDb);

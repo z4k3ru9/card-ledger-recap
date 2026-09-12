@@ -1,7 +1,6 @@
 {
     "name": "card-ledger-recap/api",
     "description": "PHP backend for Card Ledger Recap: MySQL-backed sessions, recap storage, and WebAuthn (passkey) login.",
-    "license": "proprietary",
     "require": {
         "php": ">=8.0",
         "lbuchs/webauthn": "^2.2"

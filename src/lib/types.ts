@@ -29,9 +29,3 @@ export interface MonthRecap {
 }
 
 export type RecapsByMonth = Record<string, MonthRecap>
-
-/** Server state used for optimistic concurrency on whole-month saves. */
-export interface RecapCollection {
-  recaps: RecapsByMonth
-  revisions: Record<string, number>
-}
